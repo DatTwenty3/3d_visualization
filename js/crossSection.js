@@ -226,7 +226,7 @@ class CrossSection {
       });
 
       marker.bindTooltip(`
-        <div style="font-family:Inter; font-size:11px; padding:2px;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif; font-size:11px; padding:2px;">
           <b>${p.id}</b><br/>
           X: ${p.x.toFixed(2)}m<br/>
           Y: ${p.y.toFixed(2)}m<br/>
@@ -432,7 +432,7 @@ class CrossSection {
       ctx.stroke();
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px Inter, sans-serif';
+      ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
       ctx.fillText('A', pA.px + 10, pA.py - 10);
 
       ctx.fillStyle = '#ff3366';
@@ -480,7 +480,7 @@ class CrossSection {
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('N', cx, cy - 17);
     ctx.restore();
@@ -517,7 +517,7 @@ class CrossSection {
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = '10px Inter, sans-serif';
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(`${niceMeters} m`, marginX + barPx + 6, marginY + 3);
     ctx.restore();
@@ -533,7 +533,7 @@ class CrossSection {
     ctx.strokeRect(this.canvas.width - 145, 8, 137, 36);
 
     ctx.fillStyle = '#00f2fe';
-    ctx.font = '10px Inter, monospace';
+    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
     ctx.fillText(`X: ${x.toFixed(2)}`, this.canvas.width - 138, 22);
     ctx.fillText(`Y: ${y.toFixed(2)}`, this.canvas.width - 138, 36);
     ctx.restore();

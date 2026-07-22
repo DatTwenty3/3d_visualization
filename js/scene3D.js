@@ -43,8 +43,8 @@ class Scene3D {
 
     // Scene
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf8fafc);
-    this.scene.fog = new THREE.FogExp2(0xf8fafc, 0.0003);
+    this.scene.background = new THREE.Color(0xf5f5f7);
+    this.scene.fog = new THREE.FogExp2(0xf5f5f7, 0.0003);
 
     // Camera
     this.camera = new THREE.PerspectiveCamera(45, width / height, 1, 10000);
@@ -485,11 +485,79 @@ class Scene3D {
   }
 
   /**
-   * Draw 3D Cross Section Cut Line and Vertical Cut Plane
+   * Labeled endpoint marker (A / B) for 3D cut line — matches 2D map styling
+   */
+  createEndpointMarker(label, colorHex, x, y, z) {
+    const marker = new THREE.Group();
+    marker.position.set(x, y, z);
+
+    const sphere = new THREE.Mesh(
+      new THREE.SphereGeometry(1.75, 20, 20),
+      new THREE.MeshBasicMaterial({ color: colorHex })
+    );
+    marker.add(sphere);
+
+    const outline = new THREE.Mesh(
+      new THREE.SphereGeometry(2.03, 20, 20),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.BackSide
+      })
+    );
+    marker.add(outline);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const hex = '#' + colorHex.toString(16).padStart(6, '0');
+
+    ctx.beginPath();
+    ctx.arc(64, 64, 52, 0, Math.PI * 2);
+    ctx.fillStyle = hex;
+    ctx.fill();
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 72px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 64, 70);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false
+      })
+    );
+    sprite.scale.set(7.7, 7.7, 1);
+    sprite.position.y = 5.6;
+    marker.add(sprite);
+
+    return marker;
+  }
+
+  /**
+   * Draw 3D Cross Section Cut Line, Vertical Cut Plane, and A/B endpoints
    */
   drawCutLine3D(profileSamples) {
     if (this.cutLineMesh) {
       this.scene.remove(this.cutLineMesh);
+      this.cutLineMesh.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (obj.material.map) obj.material.map.dispose();
+          obj.material.dispose();
+        }
+      });
       this.cutLineMesh = null;
     }
 
@@ -538,7 +606,7 @@ class Scene3D {
     const planeGeo = new THREE.BufferGeometry();
     planeGeo.setIndex(planeIndices);
     planeGeo.setAttribute('position', new THREE.Float32BufferAttribute(planePositions, 3));
-    
+
     const planeMat = new THREE.MeshBasicMaterial({
       color: 0xea580c,
       transparent: true,
@@ -547,6 +615,15 @@ class Scene3D {
     });
     const curtain = new THREE.Mesh(planeGeo, planeMat);
     group.add(curtain);
+
+    // Endpoint markers A (start) and B (end) — same colors as 2D Leaflet markers
+    const sA = profileSamples[0];
+    const sB = profileSamples[profileSamples.length - 1];
+    const yA = sA.localY * this.zScale + 4;
+    const yB = sB.localY * this.zScale + 4;
+
+    group.add(this.createEndpointMarker('A', 0x1e3a8a, sA.localX, yA, sA.localZ));
+    group.add(this.createEndpointMarker('B', 0xea580c, sB.localX, yB, sB.localZ));
 
     this.cutLineMesh = group;
     this.scene.add(this.cutLineMesh);

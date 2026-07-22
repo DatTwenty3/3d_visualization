@@ -13,7 +13,7 @@ d:\4. code\3d_visualization\
 ├── AULAC.png                                   # Logo Công ty CP Tư vấn Xây dựng Âu Lạc
 ├── Travinh - HS_L0002_2026-03-06-sang.txt      # File dữ liệu đo độ sâu mặc định (VN-2000)
 ├── css/
-│   └── styles.css                              # Design System Light Mode Flat Design (Deep Navy & Deep Orange)
+│   └── styles.css                              # Design System Liquid Glass (Apple-inspired)
 └── js/
     ├── app.js                                  # Main Application Controller
     ├── colorRamps.js                           # Bảng màu độ sâu (Heatmaps/Palettes)
@@ -55,5 +55,5 @@ d:\4. code\3d_visualization\
 
 ## Coding Standards & UI Aesthetics
 - Sử dụng Vanilla JavaScript ES6+, HTML5 semantic, và Vanilla CSS3.
-- Hệ thiết kế **Light Mode Flat Design System** màu chủ đạo **Xanh dương đậm (#1e3a8a)** & **Cam đậm (#ea580c)** thương hiệu Âu Lạc.
+- Hệ thiết kế **Liquid Glass (Apple-inspired)**: panel kính lỏng trong suốt (`backdrop-filter` + sheen/rim động), ambient blob phía sau, typography system SF Pro stack, text `#1d1d1f` / muted `#6e6e73`, accent cam thương hiệu **#ea580c** dùng sparingly cho CTA và highlight độ sâu.
 - Đảm bảo hiệu năng mượt mà 60fps.

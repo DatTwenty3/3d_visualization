@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AULAC RIVER 3D | Hệ Thống Trực Quan Hóa 3D Địa Hình Đáy Sông - Công Ty CP Tư Vấn Xây Dựng Âu Lạc</title>
 
-  <!-- Google Fonts & Icons -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
   <!-- Application Stylesheet -->
@@ -26,40 +23,48 @@
 </head>
 <body>
 
+  <!-- Ambient liquid light (behind frosted glass) -->
+  <div class="liquid-ambient" aria-hidden="true">
+    <span class="liquid-blob liquid-blob-1"></span>
+    <span class="liquid-blob liquid-blob-2"></span>
+    <span class="liquid-blob liquid-blob-3"></span>
+    <span class="liquid-blob liquid-blob-4"></span>
+  </div>
+
   <!-- Loading Overlay Spinner -->
   <div id="loadingOverlay" class="loading-overlay">
     <div class="spinner"></div>
-    <div class="loading-text">Đang tính toán nội suy & dựng mô hình 3D... | Công ty CP Tư vấn Xây dựng Âu Lạc</div>
+    <div class="loading-text">Đang dựng mô hình 3D…</div>
   </div>
 
   <!-- Main Dashboard Header -->
-  <header class="app-header">
+  <header class="app-header liquid-glass">
     <div class="brand">
       <div class="brand-logo-container">
         <img src="AULAC.png" alt="Công ty CP Tư vấn Xây dựng Âu Lạc Logo" class="brand-logo" />
       </div>
       <div class="brand-title">
-        <h1>AULAC RIVER 3D DASHBOARD</h1>
-        <p>Hệ thống Trực quan hóa 3D & Phân tích Mặt cắt Độ sâu Lòng sông | Công ty CP Tư vấn Xây dựng Âu Lạc</p>
+        <h1>AULAC RIVER 3D</h1>
+        <p>Trực quan hóa độ sâu lòng sông · Âu Lạc</p>
       </div>
     </div>
 
     <!-- Quick Stats Bar -->
     <div class="quick-stats">
       <div class="stat-item">
-        <span class="label">Tổng số điểm đo</span>
+        <span class="label">Điểm đo</span>
         <span class="value" id="statTotalPoints">3,043</span>
       </div>
       <div class="stat-item">
-        <span class="label">Độ sâu cực đại</span>
+        <span class="label">Sâu nhất</span>
         <span class="value" id="statMaxDepth">-6.41 m</span>
       </div>
       <div class="stat-item">
-        <span class="label">Độ sâu cực tiểu</span>
+        <span class="label">Nông nhất</span>
         <span class="value" id="statMinDepth">-2.53 m</span>
       </div>
       <div class="stat-item">
-        <span class="label">Độ sâu trung bình</span>
+        <span class="label">Trung bình</span>
         <span class="value" id="statAvgDepth">-4.12 m</span>
       </div>
     </div>
@@ -68,7 +73,7 @@
     <div class="header-actions">
       <input type="file" id="fileInput" accept=".txt,.csv" style="display: none;">
       <button class="btn btn-primary" id="btnUpload">
-        <i class="fa-solid fa-file-arrow-up"></i> Tải file dữ liệu mới
+        <i class="fa-solid fa-file-arrow-up"></i> Tải dữ liệu
       </button>
     </div>
   </header>
@@ -77,14 +82,14 @@
   <div class="app-body">
     
     <!-- Sidebar Control Panel -->
-    <aside class="app-sidebar">
+    <aside class="app-sidebar liquid-glass">
       
       <!-- Dataset Information -->
       <div class="sidebar-section">
         <div class="section-title">
-          <i class="fa-solid fa-database"></i> Tập dữ liệu hiện tại
+          <i class="fa-solid fa-database"></i> Tập dữ liệu
         </div>
-        <div style="font-size: 0.8rem; color: var(--text-main); font-weight: 600; word-break: break-all;" id="fileNameLabel">
+        <div style="font-size: 0.8rem; color: var(--text-main); font-weight: 500; word-break: break-all;" id="fileNameLabel">
           Travinh - HS_L0002_2026-03-06-sang.txt
         </div>
       </div>
@@ -92,14 +97,14 @@
       <!-- 3D Rendering Options -->
       <div class="sidebar-section">
         <div class="section-title">
-          <i class="fa-solid fa-cube"></i> Tinh chỉnh mô hình 3D
+          <i class="fa-solid fa-cube"></i> Mô hình 3D
         </div>
 
         <!-- Z Exaggeration -->
         <div class="form-group">
           <label>
-            <span>Phóng đại độ sâu (Z-Scale)</span>
-            <span id="zScaleValue" style="color: var(--accent-cyan); font-weight: 700;">3x</span>
+            <span>Phóng đại độ sâu</span>
+            <span id="zScaleValue" style="color: var(--accent-orange); font-weight: 600;">3x</span>
           </label>
           <input type="range" class="form-range" id="zScaleInput" min="1" max="10" step="0.5" value="3">
         </div>
@@ -108,17 +113,17 @@
         <div class="form-group">
           <label>Chế độ hiển thị</label>
           <div class="toggle-group">
-            <button class="toggle-btn active" data-mode="surface">Lưới 3D</button>
-            <button class="toggle-btn" data-mode="wireframe">Khung dây</button>
-            <button class="toggle-btn" data-mode="points">Điểm đo</button>
+            <button class="toggle-btn active" data-mode="surface">Lưới</button>
+            <button class="toggle-btn" data-mode="wireframe">Khung</button>
+            <button class="toggle-btn" data-mode="points">Điểm</button>
             <button class="toggle-btn" data-mode="both">Kết hợp</button>
           </div>
         </div>
 
         <!-- Water Surface Toggle -->
         <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 4px;">
-          <label for="chkWater" style="cursor: pointer; margin: 0;">Hiển thị mặt nước (Z=0m)</label>
-          <input type="checkbox" id="chkWater" checked style="width: 18px; height: 18px; accent-color: var(--accent-cyan); cursor: pointer;">
+          <label for="chkWater" style="cursor: pointer; margin: 0;">Mặt nước (Z = 0 m)</label>
+          <input type="checkbox" id="chkWater" checked style="width: 18px; height: 18px; accent-color: var(--accent-orange); cursor: pointer;">
         </div>
 
       </div>
@@ -126,29 +131,25 @@
       <!-- Bathymetry Color Palette -->
       <div class="sidebar-section">
         <div class="section-title">
-          <i class="fa-solid fa-palette"></i> Thang màu độ sâu (Heatmap)
+          <i class="fa-solid fa-palette"></i> Thang màu độ sâu
         </div>
         <div class="form-group">
           <select class="form-control" id="paletteSelect">
-            <option value="bathymetry" selected>Ocean Bathymetry (Nước sâu - Nông)</option>
-            <option value="rainbow">Rainbow Spectrum (Cầu vồng)</option>
-            <option value="viridis">Viridis High Contrast</option>
-            <option value="thermal">Thermal Heatmap (Nhiệt)</option>
-            <option value="terrain">Terrain Geography (Địa hình)</option>
+            <option value="bathymetry" selected>Ocean Bathymetry</option>
+            <option value="rainbow">Rainbow Spectrum</option>
+            <option value="viridis">Viridis</option>
+            <option value="thermal">Thermal</option>
+            <option value="terrain">Terrain</option>
           </select>
           <div class="color-legend-bar" id="colorLegendBar"></div>
           <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-            <input type="checkbox" id="chkContours" checked>
-            <label for="chkContours" style="font-size: 0.8rem; color: var(--text-main); font-weight: 600; cursor: pointer;">
-              🗺️ Hiển thị đường đồng mức (-2m, -4m, -6m...)
+            <input type="checkbox" id="chkContours" checked style="accent-color: var(--accent-orange);">
+            <label for="chkContours" style="font-size: 0.78rem; color: var(--text-main); font-weight: 400; cursor: pointer;">
+              Đường đồng mức (−2 m, −4 m, −6 m…)
             </label>
           </div>
         </div>
       </div>
-
-
-
-
 
     </aside>
 
@@ -160,13 +161,13 @@
         <div id="viewport3d"></div>
 
         <!-- 3D Raycaster Hover Inspector HUD -->
-        <div id="hoverInfoHUD" class="hover-hud">
-          <div class="hud-title"><i class="fa-solid fa-crosshairs"></i> Thông số vị trí rê chuột</div>
+        <div id="hoverInfoHUD" class="hover-hud liquid-glass">
+          <div class="hud-title"><i class="fa-solid fa-crosshairs"></i> Vị trí rê chuột</div>
           <div class="hud-body">
-            <div class="hud-row"><span class="hud-label">Mã điểm:</span> <span id="hudPointID" class="hud-val">Chỉ định vị trí</span></div>
-            <div class="hud-row"><span class="hud-label">VN-2000 X:</span> <span id="hudX" class="hud-val">---</span></div>
-            <div class="hud-row"><span class="hud-label">VN-2000 Y:</span> <span id="hudY" class="hud-val">---</span></div>
-            <div class="hud-row"><span class="hud-label">Độ sâu Z:</span> <span id="hudZ" class="hud-val-highlight">---</span></div>
+            <div class="hud-row"><span class="hud-label">Mã điểm</span> <span id="hudPointID" class="hud-val">—</span></div>
+            <div class="hud-row"><span class="hud-label">VN-2000 X</span> <span id="hudX" class="hud-val">—</span></div>
+            <div class="hud-row"><span class="hud-label">VN-2000 Y</span> <span id="hudY" class="hud-val">—</span></div>
+            <div class="hud-row"><span class="hud-label">Độ sâu Z</span> <span id="hudZ" class="hud-val-highlight">—</span></div>
           </div>
         </div>
 
@@ -178,9 +179,9 @@
         </div>
 
         <!-- 2D Map Window Overlay -->
-        <div class="map2d-window" id="map2dWindow">
+        <div class="map2d-window liquid-glass" id="map2dWindow">
           <div class="map2d-header">
-            <span><i class="fa-solid fa-map-location-dot"></i> BẢN ĐỒ 2D & ĐƯỜNG CẮT A-B</span>
+            <span><i class="fa-solid fa-map-location-dot"></i> Bản đồ 2D · Đường cắt A–B</span>
             <div class="map2d-header-actions">
               <button class="icon-btn" id="btnToggleMapSize" title="Phóng to / Thu nhỏ bản đồ 2D">
                 <i class="fa-solid fa-expand"></i>
@@ -195,26 +196,36 @@
       </div>
 
       <!-- Bottom Cross-Section Chart Panel -->
-      <section class="cross-section-panel">
+      <section class="cross-section-panel liquid-glass">
         <div class="cs-header">
           <div class="cs-title">
-            <i class="fa-solid fa-chart-area"></i> BIỂU ĐỒ MẶT CẮT NGANG LÒNG SÔNG (CROSS-SECTION PROFILE)
+            <i class="fa-solid fa-chart-area"></i> Mặt cắt ngang lòng sông
           </div>
           <div class="cs-stats">
             <div class="cs-stat">
-              <span class="label">Chiều rộng mặt cắt:</span>
+              <span class="label">Chiều rộng</span>
               <span class="value" id="csWidth">0 m</span>
             </div>
             <div class="cs-stat">
-              <span class="label">Độ sâu lớn nhất:</span>
+              <span class="label">Sâu nhất</span>
               <span class="value" id="csMaxDepth">0 m</span>
             </div>
             <div class="cs-stat">
-              <span class="label">Diện tích mặt cắt:</span>
+              <span class="label">Diện tích</span>
               <span class="value" id="csArea">0 m²</span>
             </div>
-            <button class="btn" id="btnExportCSV" style="padding: 3px 10px; font-size: 0.75rem;">
-              <i class="fa-solid fa-download"></i> Xuất CSV mặt cắt
+            <div class="cs-distance-origin" title="Gốc đo khoảng cách trên nhãn độ sâu">
+              <span class="cs-distance-label">Khoảng cách</span>
+              <div class="toggle-group cs-origin-toggle">
+                <button type="button" class="toggle-btn active" data-origin="A" id="btnDistFromA">Từ A</button>
+                <button type="button" class="toggle-btn" data-origin="B" id="btnDistFromB">Từ B</button>
+              </div>
+            </div>
+            <button class="btn" id="btnExportCSV" style="padding: 4px 12px; font-size: 0.72rem;">
+              <i class="fa-solid fa-download"></i> Xuất CSV
+            </button>
+            <button class="icon-btn" id="btnToggleCsSize" title="Phóng to / Thu nhỏ mặt cắt">
+              <i class="fa-solid fa-expand"></i>
             </button>
           </div>
         </div>

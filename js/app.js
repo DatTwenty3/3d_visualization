@@ -162,6 +162,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 320);
   });
 
+  // Expand / collapse cross-section chart panel
+  const btnToggleCsSize = document.getElementById('btnToggleCsSize');
+  const csPanel = document.querySelector('.cross-section-panel');
+  btnToggleCsSize.addEventListener('click', () => {
+    const isExpanded = csPanel.classList.toggle('expanded');
+    const icon = btnToggleCsSize.querySelector('i');
+    if (icon) {
+      icon.className = isExpanded ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+    }
+    btnToggleCsSize.title = isExpanded ? 'Thu nhỏ mặt cắt' : 'Phóng to mặt cắt';
+    setTimeout(() => {
+      if (chartManager.chart) chartManager.chart.resize();
+      scene3D.onWindowResize();
+      crossSection.resizeMap();
+    }, 360);
+  });
+
+  // Distance origin for hover depth label (from A or from B)
+  const originBtns = document.querySelectorAll('.cs-origin-toggle .toggle-btn');
+  originBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      originBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      chartManager.distanceOrigin = btn.dataset.origin === 'B' ? 'B' : 'A';
+      if (chartManager.chart) chartManager.chart.draw();
+    });
+  });
+
   // Export Cross-Section Profile to CSV
   document.getElementById('btnExportCSV').addEventListener('click', () => {
     if (!crossSection.pointA || !crossSection.pointB) return;
