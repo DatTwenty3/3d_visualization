@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AULAC RIVER 3D | Hệ Thống Trực Quan Hóa 3D Địa Hình Đáy Sông - Công Ty CP Tư Vấn Xây Dựng Âu Lạc</title>
+
+  <!-- Google Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Application Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css">
+
+  <!-- Three.js & Chart.js CDNs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Leaflet GIS Map & Proj4 CDNs -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+</head>
+<body>
+
+  <!-- Loading Overlay Spinner -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Đang tính toán nội suy & dựng mô hình 3D... | Công ty CP Tư vấn Xây dựng Âu Lạc</div>
+  </div>
+
+  <!-- Main Dashboard Header -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-logo-container">
+        <img src="AULAC.png" alt="Công ty CP Tư vấn Xây dựng Âu Lạc Logo" class="brand-logo" />
+      </div>
+      <div class="brand-title">
+        <h1>AULAC RIVER 3D DASHBOARD</h1>
+        <p>Hệ thống Trực quan hóa 3D & Phân tích Mặt cắt Độ sâu Lòng sông | Công ty CP Tư vấn Xây dựng Âu Lạc</p>
+      </div>
+    </div>
+
+    <!-- Quick Stats Bar -->
+    <div class="quick-stats">
+      <div class="stat-item">
+        <span class="label">Tổng số điểm đo</span>
+        <span class="value" id="statTotalPoints">3,043</span>
+      </div>
+      <div class="stat-item">
+        <span class="label">Độ sâu cực đại</span>
+        <span class="value" id="statMaxDepth">-6.41 m</span>
+      </div>
+      <div class="stat-item">
+        <span class="label">Độ sâu cực tiểu</span>
+        <span class="value" id="statMinDepth">-2.53 m</span>
+      </div>
+      <div class="stat-item">
+        <span class="label">Độ sâu trung bình</span>
+        <span class="value" id="statAvgDepth">-4.12 m</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="header-actions">
+      <input type="file" id="fileInput" accept=".txt,.csv" style="display: none;">
+      <button class="btn btn-primary" id="btnUpload">
+        <i class="fa-solid fa-file-arrow-up"></i> Tải file dữ liệu mới
+      </button>
+    </div>
+  </header>
+
+  <!-- App Main Body -->
+  <div class="app-body">
+    
+    <!-- Sidebar Control Panel -->
+    <aside class="app-sidebar">
+      
+      <!-- Dataset Information -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <i class="fa-solid fa-database"></i> Tập dữ liệu hiện tại
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-main); font-weight: 600; word-break: break-all;" id="fileNameLabel">
+          Travinh - HS_L0002_2026-03-06-sang.txt
+        </div>
+      </div>
+
+      <!-- 3D Rendering Options -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <i class="fa-solid fa-cube"></i> Tinh chỉnh mô hình 3D
+        </div>
+
+        <!-- Z Exaggeration -->
+        <div class="form-group">
+          <label>
+            <span>Phóng đại độ sâu (Z-Scale)</span>
+            <span id="zScaleValue" style="color: var(--accent-cyan); font-weight: 700;">3x</span>
+          </label>
+          <input type="range" class="form-range" id="zScaleInput" min="1" max="10" step="0.5" value="3">
+        </div>
+
+        <!-- Render Mode Toggle -->
+        <div class="form-group">
+          <label>Chế độ hiển thị</label>
+          <div class="toggle-group">
+            <button class="toggle-btn active" data-mode="surface">Lưới 3D</button>
+            <button class="toggle-btn" data-mode="wireframe">Khung dây</button>
+            <button class="toggle-btn" data-mode="points">Điểm đo</button>
+            <button class="toggle-btn" data-mode="both">Kết hợp</button>
+          </div>
+        </div>
+
+        <!-- Water Surface Toggle -->
+        <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 4px;">
+          <label for="chkWater" style="cursor: pointer; margin: 0;">Hiển thị mặt nước (Z=0m)</label>
+          <input type="checkbox" id="chkWater" checked style="width: 18px; height: 18px; accent-color: var(--accent-cyan); cursor: pointer;">
+        </div>
+
+      </div>
+
+      <!-- Bathymetry Color Palette -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <i class="fa-solid fa-palette"></i> Thang màu độ sâu (Heatmap)
+        </div>
+        <div class="form-group">
+          <select class="form-control" id="paletteSelect">
+            <option value="bathymetry" selected>Ocean Bathymetry (Nước sâu - Nông)</option>
+            <option value="rainbow">Rainbow Spectrum (Cầu vồng)</option>
+            <option value="viridis">Viridis High Contrast</option>
+            <option value="thermal">Thermal Heatmap (Nhiệt)</option>
+            <option value="terrain">Terrain Geography (Địa hình)</option>
+          </select>
+          <div class="color-legend-bar" id="colorLegendBar"></div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+            <input type="checkbox" id="chkContours" checked>
+            <label for="chkContours" style="font-size: 0.8rem; color: var(--text-main); font-weight: 600; cursor: pointer;">
+              🗺️ Hiển thị đường đồng mức (-2m, -4m, -6m...)
+            </label>
+          </div>
+        </div>
+      </div>
+
+
+
+
+
+    </aside>
+
+    <!-- Main Viewport Area -->
+    <main class="main-content">
+      
+      <!-- 3D Canvas Viewport -->
+      <div class="viewports-container">
+        <div id="viewport3d"></div>
+
+        <!-- 3D Raycaster Hover Inspector HUD -->
+        <div id="hoverInfoHUD" class="hover-hud">
+          <div class="hud-title"><i class="fa-solid fa-crosshairs"></i> Thông số vị trí rê chuột</div>
+          <div class="hud-body">
+            <div class="hud-row"><span class="hud-label">Mã điểm:</span> <span id="hudPointID" class="hud-val">Chỉ định vị trí</span></div>
+            <div class="hud-row"><span class="hud-label">VN-2000 X:</span> <span id="hudX" class="hud-val">---</span></div>
+            <div class="hud-row"><span class="hud-label">VN-2000 Y:</span> <span id="hudY" class="hud-val">---</span></div>
+            <div class="hud-row"><span class="hud-label">Độ sâu Z:</span> <span id="hudZ" class="hud-val-highlight">---</span></div>
+          </div>
+        </div>
+
+        <!-- 3D Viewport Floating Overlay Controls -->
+        <div class="viewport-overlay">
+          <button class="overlay-btn" id="btnResetCamera" title="Reset góc nhìn 3D">
+            <i class="fa-solid fa-compress-arrows-alt"></i>
+          </button>
+        </div>
+
+        <!-- 2D Map Window Overlay -->
+        <div class="map2d-window" id="map2dWindow">
+          <div class="map2d-header">
+            <span><i class="fa-solid fa-map-location-dot"></i> BẢN ĐỒ 2D & ĐƯỜNG CẮT A-B</span>
+            <div class="map2d-header-actions">
+              <button class="icon-btn" id="btnToggleMapSize" title="Phóng to / Thu nhỏ bản đồ 2D">
+                <i class="fa-solid fa-expand"></i>
+              </button>
+            </div>
+          </div>
+          <div class="map2d-body">
+            <div id="leafletMap"></div>
+            <canvas id="map2dCanvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Cross-Section Chart Panel -->
+      <section class="cross-section-panel">
+        <div class="cs-header">
+          <div class="cs-title">
+            <i class="fa-solid fa-chart-area"></i> BIỂU ĐỒ MẶT CẮT NGANG LÒNG SÔNG (CROSS-SECTION PROFILE)
+          </div>
+          <div class="cs-stats">
+            <div class="cs-stat">
+              <span class="label">Chiều rộng mặt cắt:</span>
+              <span class="value" id="csWidth">0 m</span>
+            </div>
+            <div class="cs-stat">
+              <span class="label">Độ sâu lớn nhất:</span>
+              <span class="value" id="csMaxDepth">0 m</span>
+            </div>
+            <div class="cs-stat">
+              <span class="label">Diện tích mặt cắt:</span>
+              <span class="value" id="csArea">0 m²</span>
+            </div>
+            <button class="btn" id="btnExportCSV" style="padding: 3px 10px; font-size: 0.75rem;">
+              <i class="fa-solid fa-download"></i> Xuất CSV mặt cắt
+            </button>
+          </div>
+        </div>
+        <div class="cs-chart-container">
+          <canvas id="crossSectionChart"></canvas>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Application Modules -->
+  <script src="js/colorRamps.js"></script>
+  <script src="js/dataLoader.js"></script>
+  <script src="js/scene3D.js"></script>
+  <script src="js/crossSection.js"></script>
+  <script src="js/chartManager.js"></script>
+  <script src="js/sampleData.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
