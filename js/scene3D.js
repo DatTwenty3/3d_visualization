@@ -110,6 +110,17 @@ class Scene3D {
     if (this.pointCloud) this.scene.remove(this.pointCloud);
     if (this.waterMesh) this.scene.remove(this.waterMesh);
     if (this.gridHelper) this.scene.remove(this.gridHelper);
+    if (this.hoverMarker) {
+      this.scene.remove(this.hoverMarker);
+      this.hoverMarker.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (obj.material.map) obj.material.map.dispose();
+          obj.material.dispose();
+        }
+      });
+      this.hoverMarker = null;
+    }
     if (this.cutPlanesGroup) {
       this.scene.remove(this.cutPlanesGroup);
       this.cutPlanesGroup = null;
@@ -245,11 +256,8 @@ class Scene3D {
     this.gridHelper.position.y = bounds.minZ * this.zScale - 20;
     this.scene.add(this.gridHelper);
 
-    // 6. Create Hover Marker Sphere
-    const markerGeo = new THREE.SphereGeometry(3, 16, 16);
-    const markerMat = new THREE.MeshBasicMaterial({ color: 0xea580c, wireframe: true });
-    this.hoverMarker = new THREE.Mesh(markerGeo, markerMat);
-    this.hoverMarker.visible = false;
+    // 6. Hover pick marker (soft pin — not wireframe sphere)
+    this.hoverMarker = this.createHoverMarker(maxSpan);
     this.scene.add(this.hoverMarker);
 
     // 7. Draw 3D Contour Lines
@@ -361,9 +369,8 @@ class Scene3D {
         const hit = intersects[0];
         const p = hit.point;
 
-        // Position hover sphere
         if (this.hoverMarker) {
-          this.hoverMarker.position.copy(p);
+          this.placeHoverMarkerOnSurface(hit);
           this.hoverMarker.visible = true;
         }
 
@@ -522,6 +529,112 @@ class Scene3D {
     if (this.waterMesh) {
       this.waterMesh.position.y = this.waterLevel * this.zScale;
     }
+  }
+
+  /**
+   * Hover pick marker that sits on the terrain: surface pad + tip along normal
+   */
+  createHoverMarker(sceneSpan = 200) {
+    const group = new THREE.Group();
+    group.visible = false;
+
+    const scale = Math.max(0.7, Math.min(2.2, sceneSpan * 0.0055));
+    group.userData.markerScale = scale;
+
+    const padR = 2.4 * scale;
+    const tipR = 0.7 * scale;
+    const tipLift = tipR * 0.95;
+
+    // Flat contact disc flush with surface (local +Y = surface normal)
+    const padMat = new THREE.MeshBasicMaterial({
+      color: 0xea580c,
+      transparent: true,
+      opacity: 0.42,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4
+    });
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(padR, 64), padMat);
+    pad.rotation.x = -Math.PI / 2;
+    group.add(pad);
+
+    // White contact ring — reads as “stuck on mesh”
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -5,
+      polygonOffsetUnits: -5
+    });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(padR * 0.72, padR, 64), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02 * scale;
+    group.add(ring);
+
+    // Soft inner fill
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4
+    });
+    const inner = new THREE.Mesh(new THREE.CircleGeometry(padR * 0.28, 32), innerMat);
+    inner.rotation.x = -Math.PI / 2;
+    inner.position.y = 0.03 * scale;
+    group.add(inner);
+
+    // Tip sphere sitting just above the contact point
+    const tip = new THREE.Mesh(
+      new THREE.SphereGeometry(tipR, 48, 48),
+      new THREE.MeshBasicMaterial({ color: 0xea580c })
+    );
+    tip.position.y = tipLift;
+    group.add(tip);
+
+    const tipRim = new THREE.Mesh(
+      new THREE.SphereGeometry(tipR * 1.18, 48, 48),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.88,
+        side: THREE.BackSide
+      })
+    );
+    tipRim.position.y = tipLift;
+    group.add(tipRim);
+
+    return group;
+  }
+
+  /**
+   * Place hover marker on hit point, aligned to face normal so pad sticks to surface
+   */
+  placeHoverMarkerOnSurface(hit) {
+    if (!this.hoverMarker || !hit) return;
+
+    const normal = hit.face && hit.face.normal
+      ? hit.face.normal.clone()
+      : new THREE.Vector3(0, 1, 0);
+    normal.transformDirection(hit.object.matrixWorld).normalize();
+
+    // Nudge slightly along normal to avoid z-fighting while staying “on” the mesh
+    const lift = (this.hoverMarker.userData.markerScale || 1) * 0.08;
+    this.hoverMarker.position.copy(hit.point).addScaledVector(normal, lift);
+
+    // Align local +Y with surface normal → disc lies on terrain
+    this.hoverMarker.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      normal
+    );
   }
 
   /**
