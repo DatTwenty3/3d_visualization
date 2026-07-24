@@ -82,7 +82,7 @@ class ChartManager {
         if (di >= 0 && meta.data[di]) {
           const pt = meta.data[di];
           const sample = samples[di];
-          const depth = sample.depth != null ? sample.depth : -sample.z;
+          const depth = self.depthBelowWater(sample.z);
 
           c.beginPath();
           c.setLineDash([3, 3]);
@@ -152,8 +152,8 @@ class ChartManager {
           const yBed = pt.y;
           const x = pt.x;
           const depth = sample
-            ? (sample.depth != null ? sample.depth : -sample.z)
-            : Math.abs(yScale.getValueForPixel(yBed));
+            ? self.depthBelowWater(sample.z)
+            : Math.max(0, self.waterLevel - yScale.getValueForPixel(yBed));
 
           // Dashed depth stem
           c.beginPath();
@@ -365,31 +365,48 @@ class ChartManager {
   }
 
   /**
-   * Update cross-section chart data from profile samples
-   * @returns {{ width: string, maxDepth: string, area: string } | undefined}
+   * Update chart from one or more cut profiles
+   * @param {Array|{length}} profilesOrSamples - multi profiles or legacy single samples
    */
-  updateChart(samples) {
-    if (!this.chart || !samples || samples.length === 0) return;
+  updateChart(profilesOrSamples) {
+    if (!this.chart) return;
+
+    // Legacy: single samples array
+    let profiles;
+    if (Array.isArray(profilesOrSamples) && profilesOrSamples.length > 0 && profilesOrSamples[0].samples) {
+      profiles = profilesOrSamples;
+    } else if (Array.isArray(profilesOrSamples) && profilesOrSamples.length > 0 && profilesOrSamples[0].z != null) {
+      profiles = [{
+        id: 1,
+        label: '1',
+        colorCss: '#c2410c',
+        active: true,
+        samples: profilesOrSamples
+      }];
+    } else {
+      return;
+    }
+
+    const active = profiles.find((p) => p.active) || profiles[0];
+    const samples = active.samples;
+    if (!samples || samples.length === 0) return;
 
     this._samples = samples;
     this._maxDepthIdx = this.findMaxDepthIndex(samples);
+    this._profiles = profiles;
 
-    const labels = samples.map(s => s.distance.toFixed(1));
+    const labels = samples.map((s) => s.distance.toFixed(1));
     const waterData = samples.map(() => this.waterLevel);
-    const terrainData = samples.map(s => ({
-      x: s.distance.toFixed(1),
-      y: s.z,
-      rawSample: s
-    }));
+    const wl = this.waterLevel;
 
-    // Padding Y so profile + water read clearly
     let minZ = Infinity;
     let maxZ = -Infinity;
-    samples.forEach(s => {
-      if (s.z < minZ) minZ = s.z;
-      if (s.z > maxZ) maxZ = s.z;
+    profiles.forEach((p) => {
+      (p.samples || []).forEach((s) => {
+        if (s.z < minZ) minZ = s.z;
+        if (s.z > maxZ) maxZ = s.z;
+      });
     });
-    const wl = this.waterLevel;
     if (Number.isFinite(wl)) {
       if (wl < minZ) minZ = wl;
       if (wl > maxZ) maxZ = wl;
@@ -399,35 +416,76 @@ class ChartManager {
     this.chart.options.scales.y.min = Math.min(minZ - pad, wl - 0.5);
     this.chart.options.scales.y.max = Math.max(maxZ + pad, wl + 0.8);
 
-    // Water column + bank fills relative to waterLevel dataset
     const waterFill = this.createWaterFill();
-    this.chart.data.datasets[1].fill = {
-      target: 0,
-      above: 'rgba(212, 165, 116, 0.4)',
-      below: waterFill
-    };
-    this.chart.data.datasets[1].backgroundColor = waterFill;
+    const datasets = [
+      {
+        label: `Mặt nước (Z = ${wl.toFixed(1)} m)`,
+        data: waterData,
+        borderColor: '#0071e3',
+        borderWidth: 1.75,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+        tension: 0,
+        order: 1
+      }
+    ];
+
+    // Put active profile first after water so viz plugin uses dataset index 1
+    const ordered = [
+      ...profiles.filter((p) => p.active),
+      ...profiles.filter((p) => !p.active)
+    ];
+
+    ordered.forEach((p, idx) => {
+      const isActive = !!p.active;
+      const terrainData = (p.samples || []).map((s) => s.z);
+      while (terrainData.length < labels.length) terrainData.push(null);
+      if (terrainData.length > labels.length) terrainData.length = labels.length;
+
+      datasets.push({
+        label: `Cắt ${p.label}${isActive ? ' (đang chọn)' : ''}`,
+        data: terrainData,
+        borderColor: p.colorCss || '#c2410c',
+        borderWidth: isActive ? 2.5 : 1.5,
+        borderDash: isActive ? [] : [4, 3],
+        backgroundColor: isActive ? waterFill : 'transparent',
+        fill: isActive
+          ? { target: 0, above: 'rgba(212, 165, 116, 0.4)', below: waterFill }
+          : false,
+        pointRadius: 0,
+        pointHoverRadius: isActive ? 6 : 0,
+        pointHoverBackgroundColor: p.colorCss || '#ea580c',
+        pointHoverBorderColor: '#ffffff',
+        pointHoverBorderWidth: 2,
+        tension: 0.25,
+        order: isActive ? 2 : 3 + idx
+      });
+    });
 
     this.chart.data.labels = labels;
-    this.chart.data.datasets[0].label = `Mặt nước (Z = ${wl.toFixed(1)} m)`;
-    this.chart.data.datasets[0].data = waterData;
-    this.chart.data.datasets[1].data = terrainData;
+    this.chart.data.datasets = datasets;
     this.chart.update('none');
 
     return this.computeProfileStats(samples);
   }
 
   /**
-   * Set visual water surface elevation and redraw chart
+   * Set water surface elevation, redraw chart, and return updated profile stats
    */
   setWaterLevel(level) {
     this.waterLevel = Number.isFinite(level) ? level : 0;
+    if (this._profiles && this._profiles.length > 0) {
+      return this.updateChart(this._profiles);
+    }
     if (this._samples && this._samples.length > 0) {
-      this.updateChart(this._samples);
-    } else if (this.chart) {
+      return this.updateChart(this._samples);
+    }
+    if (this.chart) {
       this.chart.data.datasets[0].label = `Mặt nước (Z = ${this.waterLevel.toFixed(1)} m)`;
       this.chart.update('none');
     }
+    return undefined;
   }
 
   createWaterFill() {
@@ -443,11 +501,20 @@ class ChartManager {
     return gradient;
   }
 
+  /**
+   * Depth below current water surface (m). 0 if bed is at/above water.
+   */
+  depthBelowWater(z) {
+    const wl = Number.isFinite(this.waterLevel) ? this.waterLevel : 0;
+    if (!Number.isFinite(z)) return 0;
+    return Math.max(0, wl - z);
+  }
+
   findMaxDepthIndex(samples) {
     let maxDepth = -Infinity;
     let idx = -1;
     for (let i = 0; i < samples.length; i++) {
-      const depth = samples[i].depth != null ? samples[i].depth : -samples[i].z;
+      const depth = this.depthBelowWater(samples[i].z);
       if (depth > maxDepth) {
         maxDepth = depth;
         idx = i;
@@ -457,7 +524,7 @@ class ChartManager {
   }
 
   /**
-   * Cross-section width, max depth, and submerged area under Z = 0
+   * Cross-section width, max depth, and submerged area under current waterLevel
    */
   computeProfileStats(samples) {
     const width = samples[samples.length - 1].distance;
@@ -466,13 +533,13 @@ class ChartManager {
     let area = 0;
 
     for (let i = 0; i < samples.length; i++) {
-      const depth = samples[i].depth != null ? samples[i].depth : -samples[i].z;
+      const depth = this.depthBelowWater(samples[i].z);
       if (depth > maxDepth) maxDepth = depth;
 
       if (i > 0) {
         const prev = samples[i - 1];
-        const prevDepth = Math.max(0, prev.depth != null ? prev.depth : -prev.z);
-        const curDepth = Math.max(0, depth);
+        const prevDepth = this.depthBelowWater(prev.z);
+        const curDepth = depth;
         const dx = samples[i].distance - prev.distance;
         area += 0.5 * (prevDepth + curDepth) * dx;
       }

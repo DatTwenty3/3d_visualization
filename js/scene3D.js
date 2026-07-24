@@ -32,6 +32,7 @@ class Scene3D {
     this.waterLevel = 0; // Water surface elevation (m), default Z = 0
     this.showContours = true;
     this.contourInterval = 1; // Contour spacing (m), range 0.5–1
+    this.cutPlanesGroup = null; // Multiple cut planes
 
     // Data references
     this.dataLoader = null;
@@ -109,6 +110,14 @@ class Scene3D {
     if (this.pointCloud) this.scene.remove(this.pointCloud);
     if (this.waterMesh) this.scene.remove(this.waterMesh);
     if (this.gridHelper) this.scene.remove(this.gridHelper);
+    if (this.cutPlanesGroup) {
+      this.scene.remove(this.cutPlanesGroup);
+      this.cutPlanesGroup = null;
+    }
+    if (this.cutLineMesh) {
+      this.scene.remove(this.cutLineMesh);
+      this.cutLineMesh = null;
+    }
 
     if (!grid || grid.length === 0) return;
 
@@ -220,11 +229,13 @@ class Scene3D {
       opacity: 0.35,
       roughness: 0.2,
       metalness: 0.5,
-      transmission: 0.7,
+      transmission: 0,
       ior: 1.333,
+      depthWrite: false,
       side: THREE.DoubleSide
     });
     this.waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    this.waterMesh.renderOrder = 2;
     this.waterMesh.position.set(0, this.waterLevel * this.zScale, 0);
     this.scene.add(this.waterMesh);
 
@@ -429,7 +440,7 @@ class Scene3D {
     }
 
     // Update 3D cut line elevation
-    if (window.crossSection && window.crossSection.pointA && window.crossSection.pointB) {
+    if (window.crossSection && window.crossSection.updateProfile) {
       window.crossSection.updateProfile();
     }
 
@@ -575,61 +586,139 @@ class Scene3D {
   }
 
   /**
-   * Draw 3D vertical cut plane (flat rectangle A→B) and endpoint markers
+   * Draw one or more vertical cut planes (multi-cut support)
+   * @param {Array<{id, color, samples, active}>} cuts
    */
-  drawCutLine3D(profileSamples) {
-    if (this.cutLineMesh) {
-      this.scene.remove(this.cutLineMesh);
-      this.cutLineMesh.traverse((obj) => {
+  drawCutLines3D(cuts) {
+    if (this.cutPlanesGroup) {
+      this.scene.remove(this.cutPlanesGroup);
+      this.cutPlanesGroup.traverse((obj) => {
         if (obj.geometry) obj.geometry.dispose();
         if (obj.material) {
           if (obj.material.map) obj.material.map.dispose();
           obj.material.dispose();
         }
       });
+      this.cutPlanesGroup = null;
+    }
+    // Legacy single-plane cleanup
+    if (this.cutLineMesh) {
+      this.scene.remove(this.cutLineMesh);
       this.cutLineMesh = null;
     }
 
-    if (!profileSamples || profileSamples.length === 0 || !this.dataLoader) return;
+    if (!cuts || cuts.length === 0 || !this.dataLoader) return;
 
     const group = new THREE.Group();
-    const sA = profileSamples[0];
-    const sB = profileSamples[profileSamples.length - 1];
     const bounds = this.dataLoader.bounds;
-
+    const meanX = bounds.meanX;
+    const meanY = bounds.meanY;
     const topY = Math.max(bounds.maxZ, this.waterLevel) * this.zScale + 10;
     const bottomY = bounds.minZ * this.zScale - 10;
 
-    // Flat vertical rectangle: A–B × top–bottom
-    const planePositions = [
-      sA.localX, topY, sA.localZ,       // 0 top A
-      sB.localX, topY, sB.localZ,       // 1 top B
-      sA.localX, bottomY, sA.localZ,    // 2 bottom A
-      sB.localX, bottomY, sB.localZ     // 3 bottom B
-    ];
-    const planeIndices = [
-      0, 2, 1,
-      2, 3, 1
-    ];
+    cuts.forEach((cut) => {
+      const samples = cut.samples;
+      if (!samples || samples.length === 0) return;
+      const colorHex = cut.colorHex != null ? cut.colorHex : 0xea580c;
+      const opacity = cut.active ? 0.38 : 0.18;
 
-    const planeGeo = new THREE.BufferGeometry();
-    planeGeo.setIndex(planeIndices);
-    planeGeo.setAttribute('position', new THREE.Float32BufferAttribute(planePositions, 3));
+      // Build ribbon path: prefer polyline vertices, else sample endpoints (straight)
+      let pathLocal = [];
+      if (cut.polyline && cut.polyline.length >= 2) {
+        pathLocal = cut.polyline.map((p) => ({
+          localX: p.x - meanX,
+          localZ: -(p.y - meanY)
+        }));
+      } else {
+        const sA = samples[0];
+        const sB = samples[samples.length - 1];
+        pathLocal = [
+          { localX: sA.localX, localZ: sA.localZ },
+          { localX: sB.localX, localZ: sB.localZ }
+        ];
+      }
 
-    const planeMat = new THREE.MeshBasicMaterial({
-      color: 0xea580c,
-      transparent: true,
-      opacity: 0.35,
-      side: THREE.DoubleSide
+      // Vertical ribbon: consecutive quads along path
+      const positions = [];
+      const indices = [];
+      for (let i = 0; i < pathLocal.length; i++) {
+        const p = pathLocal[i];
+        positions.push(p.localX, topY, p.localZ);
+        positions.push(p.localX, bottomY, p.localZ);
+      }
+      for (let i = 0; i < pathLocal.length - 1; i++) {
+        const a = i * 2;
+        const b = a + 1;
+        const c = a + 2;
+        const d = a + 3;
+        indices.push(a, b, c, b, d, c);
+      }
+      const planeGeo = new THREE.BufferGeometry();
+      planeGeo.setIndex(indices);
+      planeGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      group.add(new THREE.Mesh(
+        planeGeo,
+        new THREE.MeshBasicMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        })
+      ));
+
+      if (cut.active) {
+        const label = cut.label || String(cut.id);
+        const first = pathLocal[0];
+        const last = pathLocal[pathLocal.length - 1];
+        group.add(this.createEndpointMarker('A', 0x1e3a8a, first.localX, topY + 4, first.localZ));
+        group.add(this.createEndpointMarker('B', colorHex, last.localX, topY + 4, last.localZ));
+        // Mid label at half chainage (not index floor — with 2 pts that would be B)
+        let midX = (first.localX + last.localX) / 2;
+        let midZ = (first.localZ + last.localZ) / 2;
+        if (pathLocal.length > 2) {
+          let total = 0;
+          const lens = [];
+          for (let i = 1; i < pathLocal.length; i++) {
+            const len = Math.hypot(
+              pathLocal[i].localX - pathLocal[i - 1].localX,
+              pathLocal[i].localZ - pathLocal[i - 1].localZ
+            );
+            lens.push(len);
+            total += len;
+          }
+          let target = total / 2;
+          for (let i = 0; i < lens.length; i++) {
+            if (target <= lens[i] + 1e-9) {
+              const t = lens[i] > 1e-9 ? target / lens[i] : 0;
+              midX = pathLocal[i].localX + t * (pathLocal[i + 1].localX - pathLocal[i].localX);
+              midZ = pathLocal[i].localZ + t * (pathLocal[i + 1].localZ - pathLocal[i].localZ);
+              break;
+            }
+            target -= lens[i];
+          }
+        }
+        group.add(this.createEndpointMarker(label, colorHex, midX, topY + 10, midZ));
+      }
     });
-    group.add(new THREE.Mesh(planeGeo, planeMat));
 
-    // Endpoint markers A / B on top edge of the plane
-    group.add(this.createEndpointMarker('A', 0x1e3a8a, sA.localX, topY + 4, sA.localZ));
-    group.add(this.createEndpointMarker('B', 0xea580c, sB.localX, topY + 4, sB.localZ));
+    this.cutPlanesGroup = group;
+    this.scene.add(this.cutPlanesGroup);
+  }
 
-    this.cutLineMesh = group;
-    this.scene.add(this.cutLineMesh);
+  /** @deprecated Use drawCutLines3D — kept for compatibility */
+  drawCutLine3D(profileSamples) {
+    if (!profileSamples || profileSamples.length === 0) {
+      this.drawCutLines3D([]);
+      return;
+    }
+    this.drawCutLines3D([{
+      id: 1,
+      label: '1',
+      colorHex: 0xea580c,
+      samples: profileSamples,
+      active: true
+    }]);
   }
 
   /**

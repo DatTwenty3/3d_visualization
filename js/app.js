@@ -12,15 +12,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const chartManager = new ChartManager('crossSectionChart');
 
-  // Callback when profile cut line changes on 2D map
-  const crossSection = new CrossSection('map2dCanvas', dataLoader, (samples, pA, pB) => {
-    // 1. Update 3D cut line
-    scene3D.drawCutLine3D(samples);
-
-    // 2. Update 2D profile chart
-    const stats = chartManager.updateChart(samples);
-
-    // 3. Update stats UI panel
+  // Callback when profile cut line(s) change on 2D map
+  const crossSection = new CrossSection('map2dCanvas', dataLoader, (profiles) => {
+    scene3D.drawCutLines3D(profiles);
+    const stats = chartManager.updateChart(profiles);
     if (stats) {
       document.getElementById('csWidth').textContent = `${stats.width} m`;
       document.getElementById('csMaxDepth').textContent = `${stats.maxDepth} m`;
@@ -29,6 +24,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   window.crossSection = crossSection;
+
+  function renderCutList(cuts, activeId) {
+    const list = document.getElementById('cutList');
+    if (!list) return;
+    list.innerHTML = '';
+    cuts.forEach((c) => {
+      const row = document.createElement('div');
+      row.className = 'cut-list-item' + (c.id === activeId ? ' active' : '');
+      row.innerHTML = `
+        <button type="button" class="cut-list-select" data-cut-id="${c.id}" title="Chọn đường cắt ${c.label}">
+          <span class="cut-swatch" style="background:${c.colorCss}"></span>
+          <span>Cắt ${c.label}</span>
+        </button>
+        <button type="button" class="cut-list-remove icon-btn" data-cut-remove="${c.id}" title="Xóa đường cắt" ${cuts.length <= 1 ? 'disabled' : ''}>
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      `;
+      list.appendChild(row);
+    });
+  }
+
+  crossSection.onCutsListChanged = renderCutList;
 
   /**
    * Load and process data string
@@ -136,7 +153,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const val = parseFloat(e.target.value);
     const level = Number.isFinite(val) ? val : 0;
     scene3D.setWaterLevel(level);
-    chartManager.setWaterLevel(level);
+    const stats = chartManager.setWaterLevel(level);
+    if (stats) {
+      document.getElementById('csWidth').textContent = `${stats.width} m`;
+      document.getElementById('csMaxDepth').textContent = `${stats.maxDepth} m`;
+      document.getElementById('csArea').textContent = `${stats.area} m²`;
+    }
   });
 
   // Contour Lines Checkbox Toggle
@@ -162,21 +184,114 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Cut mode Ortho: Tự do / Cắt ngang / Cắt dọc
+  // Cut mode: Tự do / Cắt ngang / Cắt dọc (Ngang/Dọc cần tim tuyến)
   const cutModeBtns = document.querySelectorAll('.toggle-btn[data-cut-mode]');
+
+  function setCutModeButtonsEnabled(hasCenterline) {
+    cutModeBtns.forEach((btn) => {
+      const mode = btn.dataset.cutMode;
+      if (mode === 'free') return;
+      btn.disabled = !hasCenterline;
+      if (hasCenterline) {
+        btn.title = mode === 'transverse'
+          ? 'Cắt ngang vuông góc tim tuyến'
+          : 'Cắt dọc theo tim tuyến';
+      } else {
+        btn.title = 'Cần tải tim tuyến KML/KMZ';
+        if (btn.classList.contains('active')) {
+          btn.classList.remove('active');
+          const freeBtn = document.querySelector('.toggle-btn[data-cut-mode="free"]');
+          if (freeBtn) freeBtn.classList.add('active');
+        }
+      }
+    });
+  }
+
   cutModeBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const ok = crossSection.setCutMode(btn.dataset.cutMode);
+      if (ok === false) return;
       cutModeBtns.forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
-      crossSection.setCutMode(btn.dataset.cutMode);
     });
   });
+
+  // Centerline (tim tuyến) KML/KMZ
+  const centerlineFileInput = document.getElementById('centerlineFileInput');
+  const btnUploadCenterline = document.getElementById('btnUploadCenterline');
+  const centerlineFileLabel = document.getElementById('centerlineFileLabel');
+  const btnClearCenterline = document.getElementById('btnClearCenterline');
+
+  function updateCenterlineUI(hasCenterline, filename) {
+    setCutModeButtonsEnabled(hasCenterline);
+    if (centerlineFileLabel) {
+      centerlineFileLabel.textContent = hasCenterline ? (filename || 'Đã tải') : 'Chưa có';
+      centerlineFileLabel.title = hasCenterline ? (filename || '') : '';
+    }
+    if (btnClearCenterline) btnClearCenterline.disabled = !hasCenterline;
+  }
+
+  crossSection.onCenterlineChanged = (has) => {
+    updateCenterlineUI(has, centerlineFileLabel ? centerlineFileLabel.textContent : '');
+    if (!has) {
+      updateCenterlineUI(false);
+      const freeBtn = document.querySelector('.toggle-btn[data-cut-mode="free"]');
+      if (freeBtn) {
+        cutModeBtns.forEach((b) => b.classList.remove('active'));
+        freeBtn.classList.add('active');
+      }
+    }
+  };
+
+  if (btnUploadCenterline && centerlineFileInput) {
+    btnUploadCenterline.addEventListener('click', () => centerlineFileInput.click());
+    centerlineFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const latLngs = await loadKmlKmz(file);
+        crossSection.setCenterline(latLngs);
+        updateCenterlineUI(true, file.name);
+      } catch (err) {
+        alert(`Lỗi tải tim tuyến: ${err.message}`);
+      }
+    });
+  }
+
+  if (btnClearCenterline) {
+    btnClearCenterline.addEventListener('click', () => {
+      crossSection.clearCenterline();
+      updateCenterlineUI(false);
+    });
+  }
 
   // Snap to survey points
   const chkSnapPoints = document.getElementById('chkSnapPoints');
   if (chkSnapPoints) {
     chkSnapPoints.addEventListener('change', (e) => {
       crossSection.setSnapEnabled(e.target.checked);
+    });
+  }
+
+  // Multi-cut: add / select / remove
+  const btnAddCut = document.getElementById('btnAddCut');
+  if (btnAddCut) {
+    btnAddCut.addEventListener('click', () => crossSection.addCut());
+  }
+  const cutList = document.getElementById('cutList');
+  if (cutList) {
+    cutList.addEventListener('click', (e) => {
+      const selectBtn = e.target.closest('[data-cut-id]');
+      if (selectBtn) {
+        crossSection.setActiveCut(Number(selectBtn.dataset.cutId));
+        return;
+      }
+      const removeBtn = e.target.closest('[data-cut-remove]');
+      if (removeBtn) {
+        crossSection.removeCut(Number(removeBtn.dataset.cutRemove));
+      }
     });
   }
 

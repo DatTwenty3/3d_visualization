@@ -170,54 +170,97 @@ class DataLoader {
     const totalDistance = Math.sqrt(dx * dx + dy * dy);
 
     const samples = [];
-    const { minZ, maxZ, meanX, meanY } = this.bounds;
-
     for (let i = 0; i <= numSamples; i++) {
       const frac = i / numSamples;
       const curX = x1 + frac * dx;
       const curY = y1 + frac * dy;
-      const distFromStart = frac * totalDistance;
+      samples.push(this._makeSample(curX, curY, frac * totalDistance));
+    }
+    return samples;
+  }
 
-      // Find Z value via IDW interpolation from dataset
-      let totalWeight = 0;
-      let weightedZ = 0;
-      let nearestDistSq = Infinity;
-      let nearestZ = minZ;
+  /**
+   * IDW Z at (x, y) and build a profile sample record
+   */
+  interpolateZ(curX, curY) {
+    if (!this.points || this.points.length === 0) return 0;
+    const { minZ } = this.bounds;
+    let totalWeight = 0;
+    let weightedZ = 0;
+    let nearestDistSq = Infinity;
+    let nearestZ = minZ;
 
-      for (let k = 0; k < this.points.length; k++) {
-        const p = this.points[k];
-        const pdx = p.x - curX;
-        const pdy = p.y - curY;
-        const dSq = pdx * pdx + pdy * pdy;
+    for (let k = 0; k < this.points.length; k++) {
+      const p = this.points[k];
+      const pdx = p.x - curX;
+      const pdy = p.y - curY;
+      const dSq = pdx * pdx + pdy * pdy;
 
-        if (dSq < nearestDistSq) {
-          nearestDistSq = dSq;
-          nearestZ = p.z;
-        }
-
-        if (dSq < 2500) { // 50m search radius
-          const dist = Math.sqrt(dSq) || 0.0001;
-          const weight = 1 / (dist * dist);
-          totalWeight += weight;
-          weightedZ += p.z * weight;
-        }
+      if (dSq < nearestDistSq) {
+        nearestDistSq = dSq;
+        nearestZ = p.z;
       }
 
-      const z = totalWeight > 0 ? (weightedZ / totalWeight) : nearestZ;
-
-      samples.push({
-        distance: distFromStart,
-        x: curX,
-        y: curY,
-        z: z,
-        depth: -z, // Depth positive value
-        localX: curX - meanX,
-        localY: z,
-        localZ: -(curY - meanY),
-        normZ: (z - minZ) / (maxZ - minZ || 1)
-      });
+      if (dSq < 2500) { // 50m search radius
+        const dist = Math.sqrt(dSq) || 0.0001;
+        const weight = 1 / (dist * dist);
+        totalWeight += weight;
+        weightedZ += p.z * weight;
+      }
     }
 
+    return totalWeight > 0 ? (weightedZ / totalWeight) : nearestZ;
+  }
+
+  _makeSample(curX, curY, distFromStart) {
+    const { minZ, maxZ, meanX, meanY } = this.bounds;
+    const z = this.interpolateZ(curX, curY);
+    return {
+      distance: distFromStart,
+      x: curX,
+      y: curY,
+      z: z,
+      depth: -z,
+      localX: curX - meanX,
+      localY: z,
+      localZ: -(curY - meanY),
+      normZ: (z - minZ) / (maxZ - minZ || 1)
+    };
+  }
+
+  /**
+   * Sample profile along a polyline (array of {x,y}), evenly by chainage.
+   */
+  sampleProfilePolyline(points, numSamples = 100) {
+    if (!this.points || this.points.length === 0) return [];
+    if (!points || points.length < 2) return [];
+
+    const segs = [];
+    let total = 0;
+    for (let i = 1; i < points.length; i++) {
+      const len = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+      segs.push({ a: points[i - 1], b: points[i], len, s0: total });
+      total += len;
+    }
+    if (total < 1e-9) {
+      return [this._makeSample(points[0].x, points[0].y, 0)];
+    }
+
+    const samples = [];
+    for (let i = 0; i <= numSamples; i++) {
+      const target = (i / numSamples) * total;
+      let seg = segs[segs.length - 1];
+      for (let s = 0; s < segs.length; s++) {
+        if (target <= segs[s].s0 + segs[s].len + 1e-9) {
+          seg = segs[s];
+          break;
+        }
+      }
+      const t = seg.len > 1e-9 ? (target - seg.s0) / seg.len : 0;
+      const curX = seg.a.x + t * (seg.b.x - seg.a.x);
+      const curY = seg.a.y + t * (seg.b.y - seg.a.y);
+      samples.push(this._makeSample(curX, curY, target));
+    }
     return samples;
   }
 

@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
 
@@ -157,16 +158,30 @@
               <i class="fa-solid fa-slash"></i> Đường cắt
             </div>
             <div class="form-group">
-              <div class="toggle-group" title="Ortho khóa hướng A–B · Kéo đường cắt / nút giữa để dời cả đoạn">
+              <div class="toggle-group" title="Cần tải tim tuyến KML/KMZ để dùng Ngang / Dọc · Kéo đường cắt / nút giữa để dời">
                 <button type="button" class="toggle-btn active" data-cut-mode="free">Tự do</button>
-                <button type="button" class="toggle-btn" data-cut-mode="transverse" title="Cắt ngang (Đông–Tây)">Ngang</button>
-                <button type="button" class="toggle-btn" data-cut-mode="longitudinal" title="Cắt dọc (Bắc–Nam)">Dọc</button>
+                <button type="button" class="toggle-btn" data-cut-mode="transverse" title="Cần tải tim tuyến KML/KMZ" disabled>Ngang</button>
+                <button type="button" class="toggle-btn" data-cut-mode="longitudinal" title="Cần tải tim tuyến KML/KMZ" disabled>Dọc</button>
               </div>
+            </div>
+            <div class="sidebar-row centerline-row">
+              <input type="file" id="centerlineFileInput" accept=".kml,.kmz" style="display: none;">
+              <button type="button" class="btn btn-centerline" id="btnUploadCenterline" title="Tải tim tuyến từ KML/KMZ">
+                <i class="fa-solid fa-route"></i> Tim tuyến
+              </button>
+              <span class="centerline-file" id="centerlineFileLabel" title="">Chưa có</span>
+              <button type="button" class="icon-btn centerline-clear" id="btnClearCenterline" title="Xóa tim tuyến" disabled>
+                <i class="fa-solid fa-xmark"></i>
+              </button>
             </div>
             <div class="sidebar-row">
               <input type="checkbox" id="chkSnapPoints" checked title="Snap điểm đo trong bán kính ~8 m">
               <label for="chkSnapPoints" title="Snap điểm đo trong bán kính ~8 m">Snap điểm đo</label>
             </div>
+            <div id="cutList" class="cut-list" aria-label="Danh sách đường cắt"></div>
+            <button type="button" class="btn btn-add-cut" id="btnAddCut" title="Thêm đường cắt mới">
+              <i class="fa-solid fa-plus"></i> Thêm đường cắt
+            </button>
           </div>
 
         </aside>
@@ -253,6 +268,7 @@
   <!-- Application Modules -->
   <script src="js/colorRamps.js"></script>
   <script src="js/dataLoader.js"></script>
+  <script src="js/kmlLoader.js"></script>
   <script src="js/scene3D.js"></script>
   <script src="js/crossSection.js"></script>
   <script src="js/chartManager.js"></script>

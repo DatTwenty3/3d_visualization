@@ -664,6 +664,119 @@ input[type="range"].form-range::-moz-range-thumb {
   font-size: 0.7rem;
 }
 
+.toggle-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.centerline-row {
+  gap: 6px;
+}
+
+.btn-centerline {
+  flex-shrink: 0;
+  padding: 5px 8px;
+  font-size: 0.7rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: var(--text-main);
+}
+
+.btn-centerline:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.centerline-file {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.centerline-clear {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.centerline-clear:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.cut-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.cut-list-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.03);
+  padding: 2px 2px 2px 4px;
+}
+
+.cut-list-item.active {
+  background: rgba(234, 88, 12, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.25);
+}
+
+.cut-list-select {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-family: var(--font-family);
+  font-weight: 500;
+  color: var(--text-main);
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.cut-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.cut-list-remove {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.cut-list-remove:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.btn-add-cut {
+  width: 100%;
+  justify-content: center;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  margin-top: 2px;
+}
+
 /* Color Legend Bar */
 .color-legend-bar {
   height: 10px;
