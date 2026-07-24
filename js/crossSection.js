@@ -14,6 +14,11 @@ class CrossSection {
     this.pointA = null;
     this.pointB = null;
 
+    // Ortho + snap (AutoCAD-like)
+    this.cutMode = 'free'; // 'free' | 'transverse' | 'longitudinal'
+    this.snapEnabled = true;
+    this.snapToleranceM = 8;
+
     // Interaction state
     this.isDrawing = false;
     this.hoverPos = null;
@@ -25,8 +30,11 @@ class CrossSection {
     this.pointLayerGroup = null;
     this.markerA = null;
     this.markerB = null;
+    this.markerMid = null;
     this.cutPolyline = null;
     this.mapFitDone = false;
+    this._isMovingCut = false;
+    this._moveCutStart = null;
 
     this.registerVN2000();
     this.initLeaflet();
@@ -138,24 +146,162 @@ class CrossSection {
     this.showContours = true;
     this.contourInterval = 1; // Contour spacing (m), range 0.5–1
 
-    // Map Click event to relocate line endpoints
+    // Map Click event to relocate line endpoints (with snap + ortho)
     this.map.on('click', (e) => {
-      const geo = this.latLngToUtm(e.latlng.lat, e.latlng.lng);
+      if (this._isMovingCut || this._suppressMapClick) return;
+      let geo = this.latLngToUtm(e.latlng.lat, e.latlng.lng);
       if (!this.pointA || !this.pointB) {
+        geo = this.constrainCutPoint(geo, null);
         this.pointA = geo;
-        this.pointB = geo;
+        this.pointB = { ...geo };
       } else {
         const dA = Math.hypot(geo.x - this.pointA.x, geo.y - this.pointA.y);
         const dB = Math.hypot(geo.x - this.pointB.x, geo.y - this.pointB.y);
         if (dA < dB) {
-          this.pointA = geo;
+          this.pointA = this.constrainCutPoint(geo, this.pointB);
         } else {
-          this.pointB = geo;
+          this.pointB = this.constrainCutPoint(geo, this.pointA);
         }
       }
       this.updateLeafletElements();
       this.updateProfile();
     });
+
+    // Translate whole cut line while dragging mid-handle or polyline
+    this.map.on('mousemove', (e) => {
+      if (!this._isMovingCut || !this._moveCutStart) return;
+      const cur = this.latLngToUtm(e.latlng.lat, e.latlng.lng);
+      this.translateCutByDelta(
+        cur.x - this._moveCutStart.cursor.x,
+        cur.y - this._moveCutStart.cursor.y
+      );
+    });
+    this.map.on('mouseup', () => this.endMoveCutLine());
+  }
+
+  /**
+   * Translate A–B by (dx, dy) in VN-2000 meters, preserving length & orientation
+   */
+  translateCutByDelta(dx, dy) {
+    if (!this._moveCutStart) return;
+    this.pointA = {
+      x: this._moveCutStart.a.x + dx,
+      y: this._moveCutStart.a.y + dy
+    };
+    this.pointB = {
+      x: this._moveCutStart.b.x + dx,
+      y: this._moveCutStart.b.y + dy
+    };
+    this.syncCutGraphics();
+    this.updateProfile();
+  }
+
+  /**
+   * Update polyline + markers A/B/mid without full Leaflet rebuild
+   */
+  syncCutGraphics() {
+    if (!this.pointA || !this.pointB) return;
+    const latLngA = this.utmToLatLng(this.pointA.x, this.pointA.y);
+    const latLngB = this.utmToLatLng(this.pointB.x, this.pointB.y);
+    const midLatLng = this.utmToLatLng(
+      (this.pointA.x + this.pointB.x) / 2,
+      (this.pointA.y + this.pointB.y) / 2
+    );
+    if (this.cutPolyline) this.cutPolyline.setLatLngs([latLngA, latLngB]);
+    if (this.markerA) this.markerA.setLatLng(latLngA);
+    if (this.markerB) this.markerB.setLatLng(latLngB);
+    if (this.markerMid) this.markerMid.setLatLng(midLatLng);
+  }
+
+  beginMoveCutLine(cursorGeo) {
+    if (!this.pointA || !this.pointB) return;
+    this._isMovingCut = true;
+    this._moveCutStart = {
+      a: { x: this.pointA.x, y: this.pointA.y },
+      b: { x: this.pointB.x, y: this.pointB.y },
+      cursor: { x: cursorGeo.x, y: cursorGeo.y }
+    };
+    if (this.map) this.map.dragging.disable();
+  }
+
+  endMoveCutLine() {
+    if (!this._isMovingCut) return;
+    this._isMovingCut = false;
+    this._moveCutStart = null;
+    this._suppressMapClick = true;
+    if (this.map) this.map.dragging.enable();
+    this.updateLeafletElements();
+    this.updateProfile();
+    setTimeout(() => { this._suppressMapClick = false; }, 50);
+  }
+
+  /**
+   * Snap cursor to nearest survey point within snapToleranceM
+   */
+  snapToNearestPoint(geo) {
+    if (!geo || !this.dataLoader || !this.dataLoader.points || this.dataLoader.points.length === 0) {
+      return geo;
+    }
+    let best = null;
+    let bestDist = Infinity;
+    const pts = this.dataLoader.points;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const d = Math.hypot(p.x - geo.x, p.y - geo.y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = p;
+      }
+    }
+    if (best && bestDist <= this.snapToleranceM) {
+      return { x: best.x, y: best.y };
+    }
+    return geo;
+  }
+
+  /**
+   * Ortho lock relative to anchor (VN-2000 axes)
+   * transverse = cắt ngang (E–W): same Northing X
+   * longitudinal = cắt dọc (N–S): same Easting Y
+   */
+  applyOrtho(geo, anchor) {
+    if (!geo || !anchor || this.cutMode === 'free') return geo;
+    if (this.cutMode === 'transverse') {
+      return { x: anchor.x, y: geo.y };
+    }
+    if (this.cutMode === 'longitudinal') {
+      return { x: geo.x, y: anchor.y };
+    }
+    return geo;
+  }
+
+  /**
+   * Apply snap then ortho (snap → ortho)
+   */
+  constrainCutPoint(geo, anchor) {
+    let p = geo;
+    if (this.snapEnabled) {
+      p = this.snapToNearestPoint(p);
+    }
+    if (anchor && this.cutMode !== 'free') {
+      p = this.applyOrtho(p, anchor);
+    }
+    return p;
+  }
+
+  setCutMode(mode) {
+    const allowed = ['free', 'transverse', 'longitudinal'];
+    this.cutMode = allowed.includes(mode) ? mode : 'free';
+    // Re-apply ortho to current B relative to A so line locks immediately
+    if (this.pointA && this.pointB && this.cutMode !== 'free') {
+      this.pointB = this.applyOrtho(this.pointB, this.pointA);
+      this.updateLeafletElements();
+      this.updateProfile();
+    }
+  }
+
+  setSnapEnabled(on) {
+    this.snapEnabled = !!on;
   }
 
   /**
@@ -271,14 +417,26 @@ class CrossSection {
     if (this.pointA && this.pointB) {
       const latLngA = this.utmToLatLng(this.pointA.x, this.pointA.y);
       const latLngB = this.utmToLatLng(this.pointB.x, this.pointB.y);
+      const midLatLng = this.utmToLatLng(
+        (this.pointA.x + this.pointB.x) / 2,
+        (this.pointA.y + this.pointB.y) / 2
+      );
 
-      // Polyline
+      // Polyline — drag to move whole cut line
       if (this.cutPolyline) this.map.removeLayer(this.cutPolyline);
       this.cutPolyline = L.polyline([latLngA, latLngB], {
         color: '#ea580c',
-        weight: 4,
-        opacity: 0.95
+        weight: 6,
+        opacity: 0.95,
+        interactive: true,
+        className: 'cut-line-draggable'
       }).addTo(this.map);
+      this.cutPolyline.on('mousedown', (e) => {
+        L.DomEvent.stopPropagation(e);
+        L.DomEvent.preventDefault(e);
+        const cursor = this.latLngToUtm(e.latlng.lat, e.latlng.lng);
+        this.beginMoveCutLine(cursor);
+      });
 
       // Custom Icons for A and B
       const iconA = L.divIcon({
@@ -295,13 +453,24 @@ class CrossSection {
         iconAnchor: [11, 11]
       });
 
+      const iconMid = L.divIcon({
+        className: 'leaflet-custom-marker',
+        html: '<div title="Kéo để dời đường cắt" style="background:#ea580c; width:14px; height:14px; border-radius:3px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.35); cursor:move;"></div>',
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      });
+
       // Marker A
       if (this.markerA) this.map.removeLayer(this.markerA);
       this.markerA = L.marker(latLngA, { draggable: true, icon: iconA }).addTo(this.map);
       this.markerA.on('drag', (e) => {
         const pos = e.target.getLatLng();
-        this.pointA = this.latLngToUtm(pos.lat, pos.lng);
-        this.cutPolyline.setLatLngs([pos, this.utmToLatLng(this.pointB.x, this.pointB.y)]);
+        let geo = this.latLngToUtm(pos.lat, pos.lng);
+        geo = this.constrainCutPoint(geo, this.pointB);
+        this.pointA = geo;
+        const latLngConstrained = this.utmToLatLng(geo.x, geo.y);
+        e.target.setLatLng(latLngConstrained);
+        this.syncCutGraphics();
         this.updateProfile();
       });
 
@@ -310,8 +479,56 @@ class CrossSection {
       this.markerB = L.marker(latLngB, { draggable: true, icon: iconB }).addTo(this.map);
       this.markerB.on('drag', (e) => {
         const pos = e.target.getLatLng();
-        this.pointB = this.latLngToUtm(pos.lat, pos.lng);
-        this.cutPolyline.setLatLngs([this.utmToLatLng(this.pointA.x, this.pointA.y), pos]);
+        let geo = this.latLngToUtm(pos.lat, pos.lng);
+        geo = this.constrainCutPoint(geo, this.pointA);
+        this.pointB = geo;
+        const latLngConstrained = this.utmToLatLng(geo.x, geo.y);
+        e.target.setLatLng(latLngConstrained);
+        this.syncCutGraphics();
+        this.updateProfile();
+      });
+
+      // Mid grip — translate whole A–B segment
+      if (this.markerMid) this.map.removeLayer(this.markerMid);
+      this.markerMid = L.marker(midLatLng, {
+        draggable: true,
+        icon: iconMid,
+        zIndexOffset: 600
+      }).addTo(this.map);
+      this.markerMid.on('dragstart', (e) => {
+        const pos = e.target.getLatLng();
+        const mid = this.latLngToUtm(pos.lat, pos.lng);
+        this._moveCutStart = {
+          a: { x: this.pointA.x, y: this.pointA.y },
+          b: { x: this.pointB.x, y: this.pointB.y },
+          cursor: mid
+        };
+      });
+      this.markerMid.on('drag', (e) => {
+        if (!this._moveCutStart) return;
+        const pos = e.target.getLatLng();
+        const cur = this.latLngToUtm(pos.lat, pos.lng);
+        const dx = cur.x - this._moveCutStart.cursor.x;
+        const dy = cur.y - this._moveCutStart.cursor.y;
+        this.pointA = {
+          x: this._moveCutStart.a.x + dx,
+          y: this._moveCutStart.a.y + dy
+        };
+        this.pointB = {
+          x: this._moveCutStart.b.x + dx,
+          y: this._moveCutStart.b.y + dy
+        };
+        // Update line + A/B only; Leaflet owns mid marker position while dragging
+        const latLngA = this.utmToLatLng(this.pointA.x, this.pointA.y);
+        const latLngB = this.utmToLatLng(this.pointB.x, this.pointB.y);
+        if (this.cutPolyline) this.cutPolyline.setLatLngs([latLngA, latLngB]);
+        if (this.markerA) this.markerA.setLatLng(latLngA);
+        if (this.markerB) this.markerB.setLatLng(latLngB);
+        this.updateProfile();
+      });
+      this.markerMid.on('dragend', () => {
+        this._moveCutStart = null;
+        this.updateLeafletElements();
         this.updateProfile();
       });
 
@@ -556,9 +773,9 @@ class CrossSection {
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
-    const geo = this.pixelToGeo(px, py);
+    const geo = this.constrainCutPoint(this.pixelToGeo(px, py), null);
     this.pointA = geo;
-    this.pointB = geo;
+    this.pointB = { ...geo };
     this.isDrawing = true;
     this.activePreset = 'custom';
 
@@ -574,7 +791,7 @@ class CrossSection {
     this.hoverPos = this.pixelToGeo(px, py);
 
     if (this.isDrawing) {
-      this.pointB = this.hoverPos;
+      this.pointB = this.constrainCutPoint(this.hoverPos, this.pointA);
       this.updateProfile();
     }
 

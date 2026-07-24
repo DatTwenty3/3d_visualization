@@ -575,7 +575,7 @@ class Scene3D {
   }
 
   /**
-   * Draw 3D Cross Section Cut Line, Vertical Cut Plane, and A/B endpoints
+   * Draw 3D vertical cut plane (flat rectangle A→B) and endpoint markers
    */
   drawCutLine3D(profileSamples) {
     if (this.cutLineMesh) {
@@ -590,47 +590,27 @@ class Scene3D {
       this.cutLineMesh = null;
     }
 
-    if (!profileSamples || profileSamples.length === 0) return;
+    if (!profileSamples || profileSamples.length === 0 || !this.dataLoader) return;
 
     const group = new THREE.Group();
+    const sA = profileSamples[0];
+    const sB = profileSamples[profileSamples.length - 1];
+    const bounds = this.dataLoader.bounds;
 
-    // 1. Top 3D Line
-    const linePositions = [];
-    const planePositions = [];
-    const planeIndices = [];
+    const topY = Math.max(bounds.maxZ, this.waterLevel) * this.zScale + 10;
+    const bottomY = bounds.minZ * this.zScale - 10;
 
-    for (let i = 0; i < profileSamples.length; i++) {
-      const s = profileSamples[i];
-      const x = s.localX;
-      const y = s.localY * this.zScale + 2; // Slightly above terrain
-      const z = s.localZ;
-
-      linePositions.push(x, y, z);
-
-      // Vertical plane vertices down to bottom
-      const bottomY = this.dataLoader.bounds.minZ * this.zScale - 10;
-      planePositions.push(x, y, z);         // Top vertex
-      planePositions.push(x, bottomY, z);   // Bottom vertex
-    }
-
-    // Line Geometry
-    const lineGeo = new THREE.BufferGeometry();
-    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xea580c, linewidth: 3 });
-    const line = new THREE.Line(lineGeo, lineMat);
-    group.add(line);
-
-    // Vertical Cut Curtain Mesh
-    const n = profileSamples.length;
-    for (let i = 0; i < n - 1; i++) {
-      const topA = i * 2;
-      const botA = i * 2 + 1;
-      const topB = (i + 1) * 2;
-      const botB = (i + 1) * 2 + 1;
-
-      planeIndices.push(topA, botA, topB);
-      planeIndices.push(botA, botB, topB);
-    }
+    // Flat vertical rectangle: A–B × top–bottom
+    const planePositions = [
+      sA.localX, topY, sA.localZ,       // 0 top A
+      sB.localX, topY, sB.localZ,       // 1 top B
+      sA.localX, bottomY, sA.localZ,    // 2 bottom A
+      sB.localX, bottomY, sB.localZ     // 3 bottom B
+    ];
+    const planeIndices = [
+      0, 2, 1,
+      2, 3, 1
+    ];
 
     const planeGeo = new THREE.BufferGeometry();
     planeGeo.setIndex(planeIndices);
@@ -642,17 +622,11 @@ class Scene3D {
       opacity: 0.35,
       side: THREE.DoubleSide
     });
-    const curtain = new THREE.Mesh(planeGeo, planeMat);
-    group.add(curtain);
+    group.add(new THREE.Mesh(planeGeo, planeMat));
 
-    // Endpoint markers A (start) and B (end) — same colors as 2D Leaflet markers
-    const sA = profileSamples[0];
-    const sB = profileSamples[profileSamples.length - 1];
-    const yA = sA.localY * this.zScale + 4;
-    const yB = sB.localY * this.zScale + 4;
-
-    group.add(this.createEndpointMarker('A', 0x1e3a8a, sA.localX, yA, sA.localZ));
-    group.add(this.createEndpointMarker('B', 0xea580c, sB.localX, yB, sB.localZ));
+    // Endpoint markers A / B on top edge of the plane
+    group.add(this.createEndpointMarker('A', 0x1e3a8a, sA.localX, topY + 4, sA.localZ));
+    group.add(this.createEndpointMarker('B', 0xea580c, sB.localX, topY + 4, sB.localZ));
 
     this.cutLineMesh = group;
     this.scene.add(this.cutLineMesh);

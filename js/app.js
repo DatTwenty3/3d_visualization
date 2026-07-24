@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('statMaxDepth').textContent = `${(-b.minZ).toFixed(2)} m`; // minZ elevation is max depth
         document.getElementById('statAvgDepth').textContent = `${(-b.meanZ).toFixed(2)} m`;
         document.getElementById('fileNameLabel').textContent = filename;
+        document.getElementById('fileNameLabel').title = filename;
 
         // Set default cross-section preset
         crossSection.setPreset('transverse-mid');
@@ -161,7 +162,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Cut mode Ortho: Tự do / Cắt ngang / Cắt dọc
+  const cutModeBtns = document.querySelectorAll('.toggle-btn[data-cut-mode]');
+  cutModeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      cutModeBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      crossSection.setCutMode(btn.dataset.cutMode);
+    });
+  });
 
+  // Snap to survey points
+  const chkSnapPoints = document.getElementById('chkSnapPoints');
+  if (chkSnapPoints) {
+    chkSnapPoints.addEventListener('change', (e) => {
+      crossSection.setSnapEnabled(e.target.checked);
+    });
+  }
 
   // Reset Camera View
   document.getElementById('btnResetCamera').addEventListener('click', () => {

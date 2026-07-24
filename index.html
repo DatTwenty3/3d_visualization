@@ -80,92 +80,97 @@
 
   <!-- App Main Body -->
   <div class="app-body">
-    
-    <!-- Sidebar Control Panel -->
-    <aside class="app-sidebar liquid-glass">
-      
-      <!-- Dataset Information -->
-      <div class="sidebar-section">
-        <div class="section-title">
-          <i class="fa-solid fa-database"></i> Tập dữ liệu
-        </div>
-        <div style="font-size: 0.8rem; color: var(--text-main); font-weight: 500; word-break: break-all;" id="fileNameLabel">
-          Travinh - HS_L0002_2026-03-06-sang.txt
-        </div>
-      </div>
-
-      <!-- 3D Rendering Options -->
-      <div class="sidebar-section">
-        <div class="section-title">
-          <i class="fa-solid fa-cube"></i> Mô hình 3D
-        </div>
-
-        <!-- Z Exaggeration -->
-        <div class="form-group">
-          <label>
-            <span>Phóng đại độ sâu</span>
-            <span id="zScaleValue" style="color: var(--accent-orange); font-weight: 600;">3x</span>
-          </label>
-          <input type="range" class="form-range" id="zScaleInput" min="1" max="10" step="0.5" value="3">
-        </div>
-
-        <!-- Render Mode Toggle -->
-        <div class="form-group">
-          <label>Chế độ hiển thị</label>
-          <div class="toggle-group">
-            <button class="toggle-btn active" data-mode="surface">Lưới</button>
-            <button class="toggle-btn" data-mode="wireframe">Khung</button>
-            <button class="toggle-btn" data-mode="points">Điểm</button>
-            <button class="toggle-btn" data-mode="both">Kết hợp</button>
-          </div>
-        </div>
-
-        <!-- Water Surface Toggle -->
-        <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 4px;">
-          <label for="chkWater" style="cursor: pointer; margin: 0;">Mặt nước</label>
-          <input type="checkbox" id="chkWater" checked style="width: 18px; height: 18px; accent-color: var(--accent-orange); cursor: pointer;">
-        </div>
-        <div class="form-group">
-          <label for="waterLevelInput">Cao độ mặt nước (m)</label>
-          <input type="number" class="form-control" id="waterLevelInput" step="0.1" value="0">
-        </div>
-
-      </div>
-
-      <!-- Bathymetry Color Palette -->
-      <div class="sidebar-section">
-        <div class="section-title">
-          <i class="fa-solid fa-palette"></i> Thang màu độ sâu
-        </div>
-        <div class="form-group">
-          <select class="form-control" id="paletteSelect">
-            <option value="bathymetry" selected>Ocean Bathymetry</option>
-            <option value="rainbow">Rainbow Spectrum</option>
-            <option value="viridis">Viridis</option>
-            <option value="thermal">Thermal</option>
-            <option value="terrain">Terrain</option>
-          </select>
-          <div class="color-legend-bar" id="colorLegendBar"></div>
-          <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-            <input type="checkbox" id="chkContours" checked style="accent-color: var(--accent-orange);">
-            <label for="chkContours" style="font-size: 0.78rem; color: var(--text-main); font-weight: 400; cursor: pointer;">
-              Đường đồng mức
-            </label>
-          </div>
-          <div class="form-group" style="margin-top: 8px;">
-            <label for="contourIntervalInput">Khoảng đồng mức (m)</label>
-            <input type="number" class="form-control" id="contourIntervalInput" min="0.5" max="1" step="0.1" value="1">
-          </div>
-        </div>
-      </div>
-
-    </aside>
 
     <!-- Main Viewport Area -->
     <main class="main-content">
       
       <!-- 3D Canvas Viewport -->
       <div class="viewports-container">
+
+        <!-- Floating tools overlay (content-sized) -->
+        <aside class="app-sidebar liquid-glass">
+
+          <!-- Dataset -->
+          <div class="sidebar-section">
+            <div class="section-title">
+              <i class="fa-solid fa-database"></i> Dữ liệu
+            </div>
+            <div class="sidebar-file" id="fileNameLabel" title="Travinh - HS_L0002_2026-03-06-sang.txt">
+              Travinh - HS_L0002_2026-03-06-sang.txt
+            </div>
+          </div>
+
+          <!-- Display -->
+          <div class="sidebar-section">
+            <div class="section-title">
+              <i class="fa-solid fa-cube"></i> Hiển thị
+            </div>
+
+            <div class="form-group">
+              <label>
+                <span>Phóng đại độ sâu</span>
+                <span id="zScaleValue" style="color: var(--accent-orange); font-weight: 600;">3x</span>
+              </label>
+              <input type="range" class="form-range" id="zScaleInput" min="1" max="10" step="0.5" value="3">
+            </div>
+
+            <div class="form-group">
+              <label>Chế độ</label>
+              <div class="toggle-group">
+                <button type="button" class="toggle-btn active" data-mode="surface">Lưới</button>
+                <button type="button" class="toggle-btn" data-mode="wireframe">Khung</button>
+                <button type="button" class="toggle-btn" data-mode="points">Điểm</button>
+                <button type="button" class="toggle-btn" data-mode="both">Kết hợp</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="paletteSelect">Thang màu</label>
+              <select class="form-control" id="paletteSelect">
+                <option value="bathymetry" selected>Ocean Bathymetry</option>
+                <option value="rainbow">Rainbow Spectrum</option>
+                <option value="viridis">Viridis</option>
+                <option value="thermal">Thermal</option>
+                <option value="terrain">Terrain</option>
+              </select>
+              <div class="color-legend-bar" id="colorLegendBar"></div>
+            </div>
+
+            <div class="sidebar-row">
+              <input type="checkbox" id="chkWater" checked>
+              <label for="chkWater">Mặt nước</label>
+              <input type="number" class="form-control" id="waterLevelInput" step="0.1" value="0" title="Cao độ mặt nước (m)" aria-label="Cao độ mặt nước (m)">
+              <span class="sidebar-unit">m</span>
+            </div>
+
+            <div class="sidebar-row">
+              <input type="checkbox" id="chkContours" checked>
+              <label for="chkContours">Đồng mức</label>
+              <input type="number" class="form-control" id="contourIntervalInput" min="0.5" max="1" step="0.1" value="1" title="Khoảng đồng mức (m)" aria-label="Khoảng đồng mức (m)">
+              <span class="sidebar-unit">m</span>
+            </div>
+          </div>
+
+          <!-- Cut line -->
+          <div class="sidebar-section">
+            <div class="section-title">
+              <i class="fa-solid fa-slash"></i> Đường cắt
+            </div>
+            <div class="form-group">
+              <div class="toggle-group" title="Ortho khóa hướng A–B · Kéo đường cắt / nút giữa để dời cả đoạn">
+                <button type="button" class="toggle-btn active" data-cut-mode="free">Tự do</button>
+                <button type="button" class="toggle-btn" data-cut-mode="transverse" title="Cắt ngang (Đông–Tây)">Ngang</button>
+                <button type="button" class="toggle-btn" data-cut-mode="longitudinal" title="Cắt dọc (Bắc–Nam)">Dọc</button>
+              </div>
+            </div>
+            <div class="sidebar-row">
+              <input type="checkbox" id="chkSnapPoints" checked title="Snap điểm đo trong bán kính ~8 m">
+              <label for="chkSnapPoints" title="Snap điểm đo trong bán kính ~8 m">Snap điểm đo</label>
+            </div>
+          </div>
+
+        </aside>
+
         <div id="viewport3d"></div>
 
         <!-- 3D Raycaster Hover Inspector HUD -->
