@@ -129,6 +129,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     scene3D.setWaterVisible(e.target.checked);
   });
 
+  // Water Level Elevation Input
+  const waterLevelInput = document.getElementById('waterLevelInput');
+  waterLevelInput.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    const level = Number.isFinite(val) ? val : 0;
+    scene3D.setWaterLevel(level);
+    chartManager.setWaterLevel(level);
+  });
+
   // Contour Lines Checkbox Toggle
   const chkContours = document.getElementById('chkContours');
   if (chkContours) {
@@ -137,6 +146,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       scene3D.setContoursVisible(visible);
       crossSection.showContours = visible;
       crossSection.updateLeafletElements();
+    });
+  }
+
+  // Contour Interval Input (0.5–1.0 m)
+  const contourIntervalInput = document.getElementById('contourIntervalInput');
+  if (contourIntervalInput) {
+    contourIntervalInput.addEventListener('input', (e) => {
+      let val = parseFloat(e.target.value);
+      if (!Number.isFinite(val)) val = 1;
+      val = Math.min(1, Math.max(0.5, val));
+      scene3D.setContourInterval(val);
+      crossSection.setContourInterval(val);
     });
   }
 

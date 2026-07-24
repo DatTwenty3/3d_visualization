@@ -29,7 +29,9 @@ class Scene3D {
     this.zScale = 3.0; // Z exaggeration factor
     this.colorPalette = 'bathymetry';
     this.showWater = true;
+    this.waterLevel = 0; // Water surface elevation (m), default Z = 0
     this.showContours = true;
+    this.contourInterval = 1; // Contour spacing (m), range 0.5–1
 
     // Data references
     this.dataLoader = null;
@@ -223,7 +225,7 @@ class Scene3D {
       side: THREE.DoubleSide
     });
     this.waterMesh = new THREE.Mesh(waterGeo, waterMat);
-    this.waterMesh.position.set(0, 0, 0); // Water level Z=0
+    this.waterMesh.position.set(0, this.waterLevel * this.zScale, 0);
     this.scene.add(this.waterMesh);
 
     // 5. Grid Helper at bottom
@@ -265,7 +267,7 @@ class Scene3D {
 
     if (!this.dataLoader || !this.showContours) return;
 
-    const contours = this.dataLoader.generateContours();
+    const contours = this.dataLoader.generateContours(this.contourInterval);
     if (!contours || contours.length === 0) return;
 
     const group = new THREE.Group();
@@ -311,6 +313,18 @@ class Scene3D {
     } else if (this.contoursGroup) {
       this.scene.remove(this.contoursGroup);
       this.contoursGroup = null;
+    }
+  }
+
+  /**
+   * Set contour spacing (meters) and redraw isobaths if visible
+   */
+  setContourInterval(interval) {
+    let step = Number(interval);
+    if (!Number.isFinite(step)) step = 1;
+    this.contourInterval = Math.min(1, Math.max(0.5, step));
+    if (this.showContours) {
+      this.drawContours3D();
     }
   }
 
@@ -418,6 +432,11 @@ class Scene3D {
     if (window.crossSection && window.crossSection.pointA && window.crossSection.pointB) {
       window.crossSection.updateProfile();
     }
+
+    // Redraw contour isobaths so they follow the new Z exaggeration
+    if (this.showContours) {
+      this.drawContours3D();
+    }
   }
 
   /**
@@ -482,6 +501,16 @@ class Scene3D {
   setWaterVisible(visible) {
     this.showWater = visible;
     if (this.waterMesh) this.waterMesh.visible = visible;
+  }
+
+  /**
+   * Set water surface elevation (meters) and update mesh position
+   */
+  setWaterLevel(level) {
+    this.waterLevel = Number.isFinite(level) ? level : 0;
+    if (this.waterMesh) {
+      this.waterMesh.position.y = this.waterLevel * this.zScale;
+    }
   }
 
   /**
@@ -645,10 +674,10 @@ class Scene3D {
 
     if (this.controls) this.controls.update();
 
-    // Gentle wave animation for water mesh
+    // Gentle wave animation for water mesh (around waterLevel)
     if (this.waterMesh && this.waterMesh.visible) {
       const time = Date.now() * 0.001;
-      this.waterMesh.position.y = Math.sin(time * 1.5) * 0.4;
+      this.waterMesh.position.y = this.waterLevel * this.zScale + Math.sin(time * 1.5) * 0.4;
     }
 
     if (this.renderer && this.scene && this.camera) {

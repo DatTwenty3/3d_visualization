@@ -223,17 +223,23 @@ class DataLoader {
 
   /**
    * Marching Squares Contour Line Generator for Bathymetric Isobaths
+   * @param {number} interval Contour spacing in meters (clamped to 0.5–1.0)
    */
-  generateContours(levels = null) {
+  generateContours(interval = 1) {
     if (!this.grid || this.grid.length < 2) return [];
 
-    if (!levels) {
-      const minVal = Math.ceil(this.bounds.minZ);
-      const maxVal = Math.floor(this.bounds.maxZ);
-      levels = [];
-      for (let z = minVal; z <= maxVal; z += 1.0) {
-        levels.push(z);
-      }
+    let step = Number(interval);
+    if (!Number.isFinite(step)) step = 1;
+    step = Math.min(1, Math.max(0.5, step));
+
+    const levels = [];
+    const minZ = this.bounds.minZ;
+    const maxZ = this.bounds.maxZ;
+    let z = Math.ceil(minZ / step) * step;
+    // Guard against floating-point drift
+    while (z <= maxZ + 1e-9) {
+      levels.push(Number(z.toFixed(3)));
+      z += step;
     }
 
     const contours = [];

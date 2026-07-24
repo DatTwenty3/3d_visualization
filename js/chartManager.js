@@ -10,6 +10,7 @@ class ChartManager {
     this._samples = [];
     this._maxDepthIdx = -1;
     this.distanceOrigin = 'A'; // 'A' | 'B' — user-selectable origin for hover distance
+    this.waterLevel = 0; // Visual water surface elevation (m)
     this.initChart();
   }
 
@@ -89,7 +90,7 @@ class ChartManager {
           c.globalAlpha = 0.5;
           c.lineWidth = 1;
           c.moveTo(pt.x, pt.y);
-          c.lineTo(pt.x, yScale.getPixelForValue(0));
+          c.lineTo(pt.x, yScale.getPixelForValue(self.waterLevel));
           c.stroke();
           c.setLineDash([]);
           c.globalAlpha = 1;
@@ -147,7 +148,7 @@ class ChartManager {
           const pt = hoverTerrain.element;
           const idx = hoverTerrain.index;
           const sample = samples[idx];
-          const yWater = yScale.getPixelForValue(0);
+          const yWater = yScale.getPixelForValue(self.waterLevel);
           const yBed = pt.y;
           const x = pt.x;
           const depth = sample
@@ -225,14 +226,18 @@ class ChartManager {
         }
 
         // Water level caption
-        const y0 = yScale.getPixelForValue(0);
+        const y0 = yScale.getPixelForValue(self.waterLevel);
         if (y0 >= chartArea.top && y0 <= chartArea.bottom) {
           c.fillStyle = '#0071e3';
           c.font = `500 9px ${fontStack}`;
           c.textAlign = 'left';
           c.textBaseline = 'bottom';
           c.globalAlpha = 0.85;
-          c.fillText('Mực nước Z = 0', chartArea.left + 4, y0 - 3);
+          const wl = self.waterLevel;
+          const wlLabel = Number.isFinite(wl)
+            ? `Mực nước Z = ${wl.toFixed(1)} m`
+            : 'Mực nước Z = 0 m';
+          c.fillText(wlLabel, chartArea.left + 4, y0 - 3);
           c.globalAlpha = 1;
         }
 
@@ -370,7 +375,7 @@ class ChartManager {
     this._maxDepthIdx = this.findMaxDepthIndex(samples);
 
     const labels = samples.map(s => s.distance.toFixed(1));
-    const waterData = samples.map(() => 0);
+    const waterData = samples.map(() => this.waterLevel);
     const terrainData = samples.map(s => ({
       x: s.distance.toFixed(1),
       y: s.z,
@@ -384,12 +389,17 @@ class ChartManager {
       if (s.z < minZ) minZ = s.z;
       if (s.z > maxZ) maxZ = s.z;
     });
+    const wl = this.waterLevel;
+    if (Number.isFinite(wl)) {
+      if (wl < minZ) minZ = wl;
+      if (wl > maxZ) maxZ = wl;
+    }
     const span = Math.max(maxZ - minZ, 1);
     const pad = span * 0.12;
-    this.chart.options.scales.y.min = Math.min(minZ - pad, -0.5);
-    this.chart.options.scales.y.max = Math.max(maxZ + pad, 0.8);
+    this.chart.options.scales.y.min = Math.min(minZ - pad, wl - 0.5);
+    this.chart.options.scales.y.max = Math.max(maxZ + pad, wl + 0.8);
 
-    // Water column + bank fills relative to Z = 0
+    // Water column + bank fills relative to waterLevel dataset
     const waterFill = this.createWaterFill();
     this.chart.data.datasets[1].fill = {
       target: 0,
@@ -399,11 +409,25 @@ class ChartManager {
     this.chart.data.datasets[1].backgroundColor = waterFill;
 
     this.chart.data.labels = labels;
+    this.chart.data.datasets[0].label = `Mặt nước (Z = ${wl.toFixed(1)} m)`;
     this.chart.data.datasets[0].data = waterData;
     this.chart.data.datasets[1].data = terrainData;
     this.chart.update('none');
 
     return this.computeProfileStats(samples);
+  }
+
+  /**
+   * Set visual water surface elevation and redraw chart
+   */
+  setWaterLevel(level) {
+    this.waterLevel = Number.isFinite(level) ? level : 0;
+    if (this._samples && this._samples.length > 0) {
+      this.updateChart(this._samples);
+    } else if (this.chart) {
+      this.chart.data.datasets[0].label = `Mặt nước (Z = ${this.waterLevel.toFixed(1)} m)`;
+      this.chart.update('none');
+    }
   }
 
   createWaterFill() {

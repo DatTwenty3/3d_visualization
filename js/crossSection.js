@@ -136,6 +136,7 @@ class CrossSection {
     // Contour lines layer group
     this.contourLayerGroup = L.layerGroup().addTo(this.map);
     this.showContours = true;
+    this.contourInterval = 1; // Contour spacing (m), range 0.5–1
 
     // Map Click event to relocate line endpoints
     this.map.on('click', (e) => {
@@ -201,6 +202,16 @@ class CrossSection {
   }
 
   /**
+   * Set contour spacing (meters) and redraw isobaths on the 2D map
+   */
+  setContourInterval(interval) {
+    let step = Number(interval);
+    if (!Number.isFinite(step)) step = 1;
+    this.contourInterval = Math.min(1, Math.max(0.5, step));
+    this.updateLeafletElements();
+  }
+
+  /**
    * Update Leaflet Points, Markers A/B & Cut Line
    */
   updateLeafletElements() {
@@ -240,7 +251,7 @@ class CrossSection {
     // 2. Draw 2D Contour Lines (Isobaths)
     this.contourLayerGroup.clearLayers();
     if (this.showContours && this.dataLoader.generateContours) {
-      const contours = this.dataLoader.generateContours();
+      const contours = this.dataLoader.generateContours(this.contourInterval);
       contours.forEach(c => {
         const level = c.level;
         c.segments.forEach(seg => {
