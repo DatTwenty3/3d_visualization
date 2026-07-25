@@ -47,6 +47,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   crossSection.onCutsListChanged = renderCutList;
 
+  // EPSG CRS selector (VN-2000 TM-3 zones)
+  const epsgSelect = document.getElementById('epsgSelect');
+  if (epsgSelect) {
+    epsgSelect.value = crossSection.getEpsg();
+    epsgSelect.addEventListener('change', () => {
+      crossSection.setEpsg(epsgSelect.value);
+    });
+  }
+
   /**
    * Load and process data string
    */
@@ -63,9 +72,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Update Stats UI
         const b = dataLoader.bounds;
         document.getElementById('statTotalPoints').textContent = dataLoader.points.length.toLocaleString();
-        document.getElementById('statMinDepth').textContent = `${(-b.maxZ).toFixed(2)} m`; // maxZ elevation is min depth
-        document.getElementById('statMaxDepth').textContent = `${(-b.minZ).toFixed(2)} m`; // minZ elevation is max depth
-        document.getElementById('statAvgDepth').textContent = `${(-b.meanZ).toFixed(2)} m`;
+        document.getElementById('statMinDepth').textContent = `${b.maxZ.toFixed(2)} m`; // nông nhất = Z cao nhất
+        document.getElementById('statMaxDepth').textContent = `${b.minZ.toFixed(2)} m`; // sâu nhất = Z thấp nhất (âm)
+        document.getElementById('statAvgDepth').textContent = `${b.meanZ.toFixed(2)} m`;
         document.getElementById('fileNameLabel').textContent = filename;
         document.getElementById('fileNameLabel').title = filename;
 

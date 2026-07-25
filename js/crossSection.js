@@ -35,8 +35,29 @@ class CrossSection {
 
     // Centerline (tim tuyến) from KML/KMZ — VN-2000 {x,y,s}
     this.centerline = null;
+    this.centerlineLatLngs = null; // original WGS84 [lat,lng] for CRS reproject
     this.centerlineLayer = null;
     this.onCenterlineChanged = null; // UI callback(hasCenterline)
+
+    // Active projected CRS (VN-2000 TM-3 zones)
+    this.crsCode = 'EPSG:9209';
+    this.CRS_DEFS = {
+      'EPSG:9209': {
+        label: 'VN-2000 / TM-3 105°30′',
+        lon0: 105.5,
+        proj4: '+proj=tmerc +lat_0=0 +lon_0=105.5 +k=0.9999 +x_0=500000 +y_0=0 +ellps=WGS84 +towgs84=-191.90441429,-39.30318279,-111.45032835,-0.00928836,0.01975479,-0.00427372,0.252906278 +units=m +no_defs'
+      },
+      'EPSG:9210': {
+        label: 'VN-2000 / TM-3 105°45′',
+        lon0: 105.75,
+        proj4: '+proj=tmerc +lat_0=0 +lon_0=105.75 +k=0.9999 +x_0=500000 +y_0=0 +ellps=WGS84 +towgs84=-191.90441429,-39.30318279,-111.45032835,-0.00928836,0.01975479,-0.00427372,0.252906278 +units=m +no_defs'
+      },
+      'EPSG:5897': {
+        label: 'VN-2000 / TM-3 105°00′ (zone 482)',
+        lon0: 105,
+        proj4: '+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9999 +x_0=500000 +y_0=0 +ellps=WGS84 +towgs84=-191.90441429,-39.30318279,-111.45032835,-0.00928836,0.01975479,-0.00427372,0.252906278 +units=m +no_defs'
+      }
+    };
 
     // Interaction state
     this.isDrawing = false;
@@ -62,54 +83,85 @@ class CrossSection {
   }
 
   /**
-   * Register official VN-2000 Trà Vinh projection definition in Proj4
-   * Central Meridian: 105°30' (105.5°), Scale factor k = 0.9999, 3° zone
+   * Register VN-2000 TM-3 EPSG definitions in Proj4
    */
   registerVN2000() {
-    if (window.proj4) {
-      proj4.defs("VN2000_TRAVINH", "+proj=tmerc +lat_0=0 +lon_0=105.5 +k=0.9999 +x_0=500000 +y_0=0 +ellps=WGS84 +towgs84=-191.9044,-39.3032,-111.4503,-0.00928836,0.00975459,-0.01175049,-0.00000127 +units=m +no_defs");
-    }
+    if (!window.proj4) return;
+    Object.keys(this.CRS_DEFS).forEach((code) => {
+      proj4.defs(code, this.CRS_DEFS[code].proj4);
+    });
   }
 
   /**
-   * Convert VN-2000 Trà Vinh (X Northing, Y Easting) to WGS84 [Lat, Lng]
+   * Switch active EPSG (9209 / 9210 / 5897). Survey X/Y stay the same;
+   * only WGS84 mapping for the 2D basemap (and KML reproject) changes.
+   */
+  setEpsg(code) {
+    const key = String(code).startsWith('EPSG:') ? String(code) : `EPSG:${code}`;
+    if (!this.CRS_DEFS[key]) return false;
+    if (this.crsCode === key) return true;
+    this.crsCode = key;
+
+    // Rebuild centerline in new projected metres from original WGS84
+    if (this.centerlineLatLngs && this.centerlineLatLngs.length >= 2) {
+      this._rebuildCenterlineFromLatLngs(this.centerlineLatLngs);
+      // Re-apply active cut constraints that depend on centerline
+      if (this.cutMode === 'transverse') this.initTransverseFromCurrent();
+      else if (this.cutMode === 'longitudinal') this.initLongitudinalFromCurrent();
+    }
+
+    this.mapFitDone = false;
+    this._drawCenterlineLayer();
+    this.updateLeafletElements();
+    this.updateProfile();
+    return true;
+  }
+
+  getEpsg() {
+    return this.crsCode.replace('EPSG:', '');
+  }
+
+  /**
+   * Convert VN-2000 (X Northing, Y Easting) → WGS84 [Lat, Lng]
    */
   utmToLatLng(x, y) {
     if (window.proj4) {
       try {
-        // In VN-2000: y is Easting (~580,000), x is Northing (~1,109,000)
-        const [lng, lat] = proj4("VN2000_TRAVINH", "EPSG:4326", [y, x]);
+        // VN-2000 file order: X=Northing, Y=Easting; proj4 expects [Easting, Northing]
+        const [lng, lat] = proj4(this.crsCode, 'EPSG:4326', [y, x]);
         return [lat, lng];
       } catch (e) {
-        console.warn("Proj4 VN-2000 conversion error", e);
+        console.warn('Proj4 VN-2000 conversion error', e);
       }
     }
-    // Accurate mathematical fallback for Trà Vinh
+    // Approximate fallback using active central meridian
+    const lon0 = (this.CRS_DEFS[this.crsCode] && this.CRS_DEFS[this.crsCode].lon0) || 105.5;
     const refLat = 10.0335;
-    const refLng = 106.2307;
+    const refLng = lon0 + 0.73;
     const refX = 1109271.482;
-    const refY = 579996.786;
+    const refY = 500000 + (refLng - lon0) * 111320 * Math.cos(refLat * Math.PI / 180) * 0.9999;
     const lat = refLat + (x - refX) / 110800;
     const lng = refLng + (y - refY) / (110800 * Math.cos(refLat * Math.PI / 180));
     return [lat, lng];
   }
 
   /**
-   * Convert WGS84 [Lat, Lng] to VN-2000 Trà Vinh {x, y}
+   * Convert WGS84 [Lat, Lng] → VN-2000 {x Northing, y Easting}
    */
   latLngToUtm(lat, lng) {
     if (window.proj4) {
       try {
-        const [y, x] = proj4("EPSG:4326", "VN2000_TRAVINH", [lng, lat]);
+        const [y, x] = proj4('EPSG:4326', this.crsCode, [lng, lat]);
         return { x, y };
       } catch (e) {
-        console.warn("Proj4 VN-2000 reverse conversion error", e);
+        console.warn('Proj4 VN-2000 reverse conversion error', e);
       }
     }
+    const lon0 = (this.CRS_DEFS[this.crsCode] && this.CRS_DEFS[this.crsCode].lon0) || 105.5;
     const refLat = 10.0335;
-    const refLng = 106.2307;
+    const refLng = lon0 + 0.73;
     const refX = 1109271.482;
-    const refY = 579996.786;
+    const refY = 500000 + (refLng - lon0) * 111320 * Math.cos(refLat * Math.PI / 180) * 0.9999;
     const x = refX + (lat - refLat) * 110800;
     const y = refY + (lng - refLng) * (110800 * Math.cos(refLat * Math.PI / 180));
     return { x, y };
@@ -398,6 +450,21 @@ class CrossSection {
     if (!latLngs || latLngs.length < 2) {
       throw new Error('Tim tuyến cần ít nhất 2 điểm.');
     }
+    this.centerlineLatLngs = latLngs.map((p) => [p[0], p[1]]);
+    this._rebuildCenterlineFromLatLngs(this.centerlineLatLngs);
+    this._drawCenterlineLayer();
+    if (this.map) {
+      const ll = this.centerline.map((p) => this.utmToLatLng(p.x, p.y));
+      try {
+        this.map.fitBounds(L.latLngBounds(ll), { padding: [40, 40], maxZoom: 17 });
+      } catch (_) { /* ignore */ }
+    }
+    if (typeof this.onCenterlineChanged === 'function') {
+      this.onCenterlineChanged(true);
+    }
+  }
+
+  _rebuildCenterlineFromLatLngs(latLngs) {
     const pts = [];
     let s = 0;
     for (let i = 0; i < latLngs.length; i++) {
@@ -410,20 +477,11 @@ class CrossSection {
       pts.push({ x: utm.x, y: utm.y, s });
     }
     this.centerline = pts;
-    this._drawCenterlineLayer();
-    if (this.map) {
-      const ll = pts.map((p) => this.utmToLatLng(p.x, p.y));
-      try {
-        this.map.fitBounds(L.latLngBounds(ll), { padding: [40, 40], maxZoom: 17 });
-      } catch (_) { /* ignore */ }
-    }
-    if (typeof this.onCenterlineChanged === 'function') {
-      this.onCenterlineChanged(true);
-    }
   }
 
   clearCenterline() {
     this.centerline = null;
+    this.centerlineLatLngs = null;
     if (this.centerlineLayerGroup) this.centerlineLayerGroup.clearLayers();
     if (this.cutMode !== 'free') {
       this.cutMode = 'free';
