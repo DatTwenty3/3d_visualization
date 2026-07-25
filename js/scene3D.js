@@ -170,8 +170,8 @@ class Scene3D {
         const cIdx = (r + 1) * cols + (c + 1);
         const d = (r + 1) * cols + c;
 
-        indices.push(a, b, d);
-        indices.push(b, cIdx, d);
+        indices.push(a, d, b);
+        indices.push(b, d, cIdx);
       }
     }
 
@@ -228,9 +228,9 @@ class Scene3D {
     this.pointCloud.name = 'pointCloud';
     this.scene.add(this.pointCloud);
 
-    // 4. Water Surface Plane (Z=0)
-    const waterWidth = bounds.spanX * 1.3;
-    const waterHeight = bounds.spanY * 1.3;
+    // 4. Water Surface Plane — size matches East (X) × North (Z) extents
+    const waterWidth = bounds.spanY * 1.3;  // Easting → Three +X
+    const waterHeight = bounds.spanX * 1.3; // Northing → Three ±Z
     const waterGeo = new THREE.PlaneGeometry(waterWidth, waterHeight, 32, 32);
     waterGeo.rotateX(-Math.PI / 2);
 
@@ -374,9 +374,9 @@ class Scene3D {
           this.hoverMarker.visible = true;
         }
 
-        // Convert 3D local coords back to UTM VN-2000
-        const utmX = p.x + this.dataLoader.bounds.meanX;
-        const utmY = -p.z + this.dataLoader.bounds.meanY;
+        // Convert 3D local coords back to UTM VN-2000 (X Northing, Y Easting)
+        const utmY = p.x + this.dataLoader.bounds.meanY; // Three +X = Easting
+        const utmX = -p.z + this.dataLoader.bounds.meanX; // Three +Z = South → Northing
         const depthZ = p.y / this.zScale;
 
         // Find nearest actual point ID if available
@@ -739,8 +739,8 @@ class Scene3D {
       let pathLocal = [];
       if (cut.polyline && cut.polyline.length >= 2) {
         pathLocal = cut.polyline.map((p) => ({
-          localX: p.x - meanX,
-          localZ: -(p.y - meanY)
+          localX: p.y - meanY, // Easting → East
+          localZ: -(p.x - meanX) // −Northing → South
         }));
       } else {
         const sA = samples[0];

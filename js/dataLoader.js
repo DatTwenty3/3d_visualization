@@ -79,11 +79,11 @@ class DataLoader {
     };
 
     // Calculate normalized 3D local coordinates
-    // Three.js Coordinate System: X = East-West, Y = Height/Up (Z in geo), Z = North-South
+    // Three.js: +X = East (Easting Y), +Y = Up (elevation Z), +Z = South (−Northing X)
     this.points.forEach(p => {
-      p.localX = p.x - meanX;
+      p.localX = p.y - meanY; // Easting → East
       p.localY = p.z; // Elevation as 3D Y
-      p.localZ = -(p.y - meanY); // North/South reversed for 3D Z
+      p.localZ = -(p.x - meanX); // −Northing → South (+Z), North (−Z)
       p.normZ = (p.z - minZ) / (maxZ - minZ || 1); // 0.0 (deepest) to 1.0 (shallowest)
     });
 
@@ -147,9 +147,9 @@ class DataLoader {
           x: gx,
           y: gy,
           z: interpolatedZ,
-          localX: gx - this.bounds.meanX,
+          localX: gy - this.bounds.meanY, // Easting → East
           localY: interpolatedZ,
-          localZ: -(gy - this.bounds.meanY),
+          localZ: -(gx - this.bounds.meanX), // −Northing → South
           normZ: (interpolatedZ - this.bounds.minZ) / (this.bounds.maxZ - this.bounds.minZ || 1)
         });
       }
@@ -221,9 +221,9 @@ class DataLoader {
       y: curY,
       z: z,
       depth: -z,
-      localX: curX - meanX,
+      localX: curY - meanY, // Easting → East
       localY: z,
-      localZ: -(curY - meanY),
+      localZ: -(curX - meanX), // −Northing → South
       normZ: (z - minZ) / (maxZ - minZ || 1)
     };
   }
