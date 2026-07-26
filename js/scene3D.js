@@ -28,7 +28,7 @@ class Scene3D {
     this.renderMode = 'surface'; // 'surface', 'wireframe', 'points', 'both'
     this.zScale = 3.0; // Z exaggeration factor
     this.colorPalette = 'bathymetry';
-    this.showWater = true;
+    this.showWater = false;
     this.waterLevel = 0; // Water surface elevation (m), default Z = 0
     this.showContours = true;
     this.contourInterval = 1; // Contour spacing (m), range 0.5–1
@@ -260,6 +260,7 @@ class Scene3D {
     this.waterMesh = new THREE.Mesh(waterGeo, waterMat);
     this.waterMesh.renderOrder = 2;
     this.waterMesh.position.set(0, this.waterLevel * this.zScale, 0);
+    this.waterMesh.visible = this.showWater;
     this.scene.add(this.waterMesh);
 
     // 5. Grid Helper at bottom
@@ -268,7 +269,7 @@ class Scene3D {
     this.gridHelper.position.y = bounds.minZ * this.zScale - 20;
     this.scene.add(this.gridHelper);
 
-    // 6. Hover pick marker (soft pin — not wireframe sphere)
+    // 6. Hover pick marker (downward arrow tip on terrain)
     this.hoverMarker = this.createHoverMarker(maxSpan);
     this.scene.add(this.hoverMarker);
 
@@ -404,11 +405,25 @@ class Scene3D {
           }
         });
 
-        // Update HUD Inspector elements
+        // Update HUD Depth Inspector
         document.getElementById('hudPointID').textContent = nearestID;
-        document.getElementById('hudX').textContent = utmX.toFixed(2) + ' m';
-        document.getElementById('hudY').textContent = utmY.toFixed(2) + ' m';
-        document.getElementById('hudZ').textContent = depthZ.toFixed(2) + ' m (' + (-depthZ).toFixed(2) + 'm sâu)';
+        document.getElementById('hudX').textContent = utmX.toFixed(2);
+        document.getElementById('hudY').textContent = utmY.toFixed(2);
+        document.getElementById('hudZ').textContent = `${depthZ.toFixed(2)} m`;
+
+        const b = this.dataLoader.bounds;
+        const spanZ = (b.maxZ - b.minZ) || 1;
+        const t = Math.max(0, Math.min(1, (depthZ - b.minZ) / spanZ)); // 0 deep → 1 shallow
+        const swatch = document.getElementById('hudSwatch');
+        if (swatch) {
+          swatch.style.background = ColorRamps.getColorCSS(t, this.colorPalette);
+        }
+        const thumb = document.getElementById('hudMeterThumb');
+        if (thumb) {
+          // Meter: left = nông (t=1), right = sâu (t=0)
+          thumb.style.left = `${((1 - t) * 100).toFixed(1)}%`;
+        }
+
         const hud = document.getElementById('hoverInfoHUD');
         if (hud) hud.classList.add('visible');
       } else {
@@ -563,91 +578,94 @@ class Scene3D {
   }
 
   /**
-   * Hover pick marker that sits on the terrain: surface pad + tip along normal
+   * Hover pick marker: downward arrow with tip stuck to terrain surface
+   * Local origin = arrow tip; shaft extends along local +Y (up)
    */
   createHoverMarker(sceneSpan = 200) {
     const group = new THREE.Group();
     group.visible = false;
 
-    const scale = Math.max(0.7, Math.min(2.2, sceneSpan * 0.0055));
+    const scale = Math.max(0.7, Math.min(2.2, sceneSpan * 0.0055)) * 0.7;
     group.userData.markerScale = scale;
 
-    const padR = 2.4 * scale;
-    const tipR = 0.7 * scale;
-    const tipLift = tipR * 0.95;
+    const tipH = 3.2 * scale;
+    const tipR = 1.35 * scale;
+    const shaftH = 5.5 * scale;
+    const shaftR = 0.38 * scale;
+    const accent = 0xea580c;
 
-    // Flat contact disc flush with surface (local +Y = surface normal)
-    const padMat = new THREE.MeshBasicMaterial({
-      color: 0xea580c,
-      transparent: true,
-      opacity: 0.42,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -4,
-      polygonOffsetUnits: -4
+    // Cone tip: default ConeGeometry points +Y; flip so tip faces -Y (downward)
+    const tipMat = new THREE.MeshBasicMaterial({
+      color: accent,
+      depthTest: true,
+      depthWrite: true
     });
-    const pad = new THREE.Mesh(new THREE.CircleGeometry(padR, 64), padMat);
-    pad.rotation.x = -Math.PI / 2;
-    group.add(pad);
-
-    // White contact ring — reads as “stuck on mesh”
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.92,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -5,
-      polygonOffsetUnits: -5
-    });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(padR * 0.72, padR, 64), ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.02 * scale;
-    group.add(ring);
-
-    // Soft inner fill
-    const innerMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.35,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -4,
-      polygonOffsetUnits: -4
-    });
-    const inner = new THREE.Mesh(new THREE.CircleGeometry(padR * 0.28, 32), innerMat);
-    inner.rotation.x = -Math.PI / 2;
-    inner.position.y = 0.03 * scale;
-    group.add(inner);
-
-    // Tip sphere sitting just above the contact point
-    const tip = new THREE.Mesh(
-      new THREE.SphereGeometry(tipR, 48, 48),
-      new THREE.MeshBasicMaterial({ color: 0xea580c })
-    );
-    tip.position.y = tipLift;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(tipR, tipH, 20), tipMat);
+    tip.rotation.x = Math.PI; // point down
+    // Tip apex at local y=0 (surface contact)
+    tip.position.y = tipH / 2;
     group.add(tip);
 
+    // White outline cone (slightly larger, backfaces)
     const tipRim = new THREE.Mesh(
-      new THREE.SphereGeometry(tipR * 1.18, 48, 48),
+      new THREE.ConeGeometry(tipR * 1.12, tipH * 1.04, 20),
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: 0.88,
-        side: THREE.BackSide
+        opacity: 0.9,
+        side: THREE.BackSide,
+        depthWrite: false
       })
     );
-    tipRim.position.y = tipLift;
+    tipRim.rotation.x = Math.PI;
+    tipRim.position.y = tipH / 2;
     group.add(tipRim);
+
+    // Shaft above the cone base
+    const shaftMat = new THREE.MeshBasicMaterial({ color: accent });
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(shaftR, shaftR, shaftH, 12),
+      shaftMat
+    );
+    shaft.position.y = tipH + shaftH / 2;
+    group.add(shaft);
+
+    const shaftRim = new THREE.Mesh(
+      new THREE.CylinderGeometry(shaftR * 1.35, shaftR * 1.35, shaftH, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.75,
+        side: THREE.BackSide,
+        depthWrite: false
+      })
+    );
+    shaftRim.position.y = tipH + shaftH / 2;
+    group.add(shaftRim);
+
+    // Small contact disc at tip for surface “stick” read
+    const pad = new THREE.Mesh(
+      new THREE.CircleGeometry(tipR * 0.55, 24),
+      new THREE.MeshBasicMaterial({
+        color: accent,
+        transparent: true,
+        opacity: 0.35,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4
+      })
+    );
+    pad.rotation.x = -Math.PI / 2;
+    pad.position.y = 0.04 * scale;
+    group.add(pad);
 
     return group;
   }
 
   /**
-   * Place hover marker on hit point, aligned to face normal so pad sticks to surface
+   * Place arrow tip on hit point; keep arrow vertical (pointing down in world space)
    */
   placeHoverMarkerOnSurface(hit) {
     if (!this.hoverMarker || !hit) return;
@@ -657,15 +675,12 @@ class Scene3D {
       : new THREE.Vector3(0, 1, 0);
     normal.transformDirection(hit.object.matrixWorld).normalize();
 
-    // Nudge slightly along normal to avoid z-fighting while staying “on” the mesh
-    const lift = (this.hoverMarker.userData.markerScale || 1) * 0.08;
+    // Tiny lift along surface normal so tip sits on mesh without z-fighting
+    const lift = (this.hoverMarker.userData.markerScale || 1) * 0.06;
     this.hoverMarker.position.copy(hit.point).addScaledVector(normal, lift);
 
-    // Align local +Y with surface normal → disc lies on terrain
-    this.hoverMarker.quaternion.setFromUnitVectors(
-      new THREE.Vector3(0, 1, 0),
-      normal
-    );
+    // Always point straight down (world -Y): identity rotation, tip at origin
+    this.hoverMarker.quaternion.identity();
   }
 
   /**

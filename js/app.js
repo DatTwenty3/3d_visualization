@@ -16,14 +16,51 @@ document.addEventListener('DOMContentLoaded', async () => {
   const crossSection = new CrossSection('map2dCanvas', dataLoader, (profiles) => {
     scene3D.drawCutLines3D(profiles);
     const stats = chartManager.updateChart(profiles);
-    if (stats) {
-      document.getElementById('csWidth').textContent = `${stats.width} m`;
-      document.getElementById('csMaxDepth').textContent = `${stats.maxDepth} m`;
-      document.getElementById('csArea').textContent = `${stats.area} m²`;
-    }
+    updateCsMeters(stats);
   });
 
   window.crossSection = crossSection;
+
+  /** Sync depth ribbon + legend labels from dataset bounds */
+  function updateDepthInstruments(palette) {
+    const paletteName = palette || (document.getElementById('paletteSelect')?.value) || 'bathymetry';
+    // Display LTR: nông (shallow) → sâu (deep) — reverse of ColorRamps stop order
+    const gradient = ColorRamps.getLegendGradientCSS(paletteName).replace('to right', 'to left');
+    const ribbon = document.getElementById('quickStats');
+    if (ribbon) ribbon.style.setProperty('--depth-ribbon-gradient', gradient);
+
+    const legendBar = document.getElementById('colorLegendBar');
+    if (legendBar) legendBar.style.background = gradient;
+
+    const hud = document.getElementById('hoverInfoHUD');
+    if (hud) hud.style.setProperty('--hud-meter-gradient', gradient);
+
+    const b = dataLoader.bounds;
+    if (!b || !Number.isFinite(b.minZ)) return;
+
+    const shallowEl = document.getElementById('legendShallowZ');
+    const deepEl = document.getElementById('legendDeepZ');
+    if (shallowEl) shallowEl.textContent = `${b.maxZ.toFixed(2)} m`;
+    if (deepEl) deepEl.textContent = `${b.minZ.toFixed(2)} m`;
+  }
+
+  /** Update cross-section inline meters */
+  function updateCsMeters(stats) {
+    if (!stats) return;
+    const widthEl = document.getElementById('csWidth');
+    const depthEl = document.getElementById('csMaxDepth');
+    const areaEl = document.getElementById('csArea');
+    const barEl = document.getElementById('csWidthBar');
+    if (widthEl) widthEl.textContent = `${stats.width} m`;
+    if (depthEl) depthEl.textContent = `${stats.maxDepth} m`;
+    if (areaEl) areaEl.textContent = `${stats.area} m²`;
+    if (barEl) {
+      const w = parseFloat(stats.width);
+      // Scale bar: ~200 m full; clamp 8–100%
+      const pct = Number.isFinite(w) ? Math.min(100, Math.max(8, (w / 200) * 100)) : 0;
+      barEl.style.width = `${pct}%`;
+    }
+  }
 
   function renderCutList(cuts, activeId) {
     const list = document.getElementById('cutList');
@@ -69,10 +106,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Update 3D Scene
         scene3D.updateData(dataLoader);
 
-        // Update Stats UI
+        // Update Stats UI — depth ribbon (nông / TB / sâu) + điểm đo
         const b = dataLoader.bounds;
         const minDepthTxt = `${b.maxZ.toFixed(2)} m`; // nông nhất = Z cao nhất
-        const maxDepthTxt = `${b.minZ.toFixed(2)} m`; // sâu nhất = Z thấp nhất (âm)
+        const maxDepthTxt = `${b.minZ.toFixed(2)} m`; // sâu nhất = Z thấp nhất
         const avgDepthTxt = `${b.meanZ.toFixed(2)} m`;
         document.getElementById('statTotalPoints').textContent = dataLoader.points.length.toLocaleString();
         document.getElementById('statMinDepth').textContent = minDepthTxt;
@@ -80,8 +117,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('statAvgDepth').textContent = avgDepthTxt;
         const quickStats = document.getElementById('quickStats');
         if (quickStats) {
-          quickStats.title = `Nông nhất: ${minDepthTxt} · Trung bình: ${avgDepthTxt}`;
+          quickStats.title = `Nông: ${minDepthTxt} · TB: ${avgDepthTxt} · Sâu: ${maxDepthTxt}`;
         }
+        updateDepthInstruments();
         document.getElementById('fileNameLabel').textContent = filename;
         document.getElementById('fileNameLabel').title = filename;
 
@@ -138,12 +176,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   paletteSelect.addEventListener('change', (e) => {
     const palette = e.target.value;
     scene3D.setColorPalette(palette);
+    chartManager.setColorPalette(palette);
     crossSection.drawMap();
-
-    // Update legend bar style
-    document.getElementById('colorLegendBar').style.background = ColorRamps.getLegendGradientCSS(palette);
+    updateDepthInstruments(palette);
   });
-  document.getElementById('colorLegendBar').style.background = ColorRamps.getLegendGradientCSS('bathymetry');
+  updateDepthInstruments('bathymetry');
+  chartManager.setColorPalette('bathymetry');
 
 
 
@@ -170,11 +208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const level = Number.isFinite(val) ? val : 0;
     scene3D.setWaterLevel(level);
     const stats = chartManager.setWaterLevel(level);
-    if (stats) {
-      document.getElementById('csWidth').textContent = `${stats.width} m`;
-      document.getElementById('csMaxDepth').textContent = `${stats.maxDepth} m`;
-      document.getElementById('csArea').textContent = `${stats.area} m²`;
-    }
+    updateCsMeters(stats);
   });
 
   // Contour Lines Checkbox Toggle

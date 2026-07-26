@@ -58,19 +58,26 @@
       <button type="button" class="workspace-mode-btn" data-workspace="section" role="tab" aria-selected="false">Mặt cắt</button>
     </div>
 
-    <!-- Compact Quick Stats -->
-    <div class="quick-stats" id="quickStats"
-         title="Nông nhất: — · Trung bình: —">
-      <div class="stat-item">
-        <span class="label">Điểm đo</span>
-        <span class="value" id="statTotalPoints">—</span>
+    <!-- Depth range ribbon (bathymetry instrument) -->
+    <div class="depth-ribbon" id="quickStats" title="Phạm vi độ sâu dataset">
+      <div class="depth-ribbon-marks">
+        <div class="depth-ribbon-mark shallow">
+          <span class="depth-ribbon-label">Nông</span>
+          <span class="depth-ribbon-value" id="statMinDepth">—</span>
+        </div>
+        <div class="depth-ribbon-mark avg">
+          <span class="depth-ribbon-label">TB</span>
+          <span class="depth-ribbon-value" id="statAvgDepth">—</span>
+        </div>
+        <div class="depth-ribbon-mark deep">
+          <span class="depth-ribbon-label">Sâu</span>
+          <span class="depth-ribbon-value" id="statMaxDepth">—</span>
+        </div>
       </div>
-      <div class="stat-item">
-        <span class="label">Sâu nhất</span>
-        <span class="value" id="statMaxDepth">—</span>
+      <div class="depth-ribbon-points">
+        <span class="depth-ribbon-points-label">Điểm đo</span>
+        <span class="depth-ribbon-points-value" id="statTotalPoints">—</span>
       </div>
-      <span class="stat-secondary" id="statMinDepth" hidden>-2.53 m</span>
-      <span class="stat-secondary" id="statAvgDepth" hidden>-4.12 m</span>
     </div>
 
     <!-- Actions -->
@@ -158,11 +165,17 @@
                   <option value="thermal">Thermal</option>
                   <option value="terrain">Terrain</option>
                 </select>
-                <div class="color-legend-bar" id="colorLegendBar"></div>
+                <div class="color-legend" id="colorLegend">
+                  <div class="color-legend-bar" id="colorLegendBar"></div>
+                  <div class="legend-labels">
+                    <span class="legend-end shallow"><em>Nông</em> <span id="legendShallowZ">—</span></span>
+                    <span class="legend-end deep"><em>Sâu</em> <span id="legendDeepZ">—</span></span>
+                  </div>
+                </div>
               </div>
 
               <div class="sidebar-row">
-                <input type="checkbox" id="chkWater" checked>
+                <input type="checkbox" id="chkWater">
                 <label for="chkWater">Mặt nước</label>
                 <input type="number" class="form-control" id="waterLevelInput" step="0.1" value="0" title="Cao độ mặt nước (m)" aria-label="Cao độ mặt nước (m)">
                 <span class="sidebar-unit">m</span>
@@ -222,14 +235,28 @@
 
         <div id="viewport3d"></div>
 
-        <!-- 3D Raycaster Hover Inspector HUD -->
+        <!-- 3D Raycaster Depth Inspector HUD -->
         <div id="hoverInfoHUD" class="hover-hud liquid-glass">
-          <div class="hud-title"><i class="fa-solid fa-crosshairs"></i> Vị trí rê chuột</div>
-          <div class="hud-body">
-            <div class="hud-row"><span class="hud-label">Mã điểm</span> <span id="hudPointID" class="hud-val">—</span></div>
-            <div class="hud-row"><span class="hud-label">VN-2000 X</span> <span id="hudX" class="hud-val">—</span></div>
-            <div class="hud-row"><span class="hud-label">VN-2000 Y</span> <span id="hudY" class="hud-val">—</span></div>
-            <div class="hud-row"><span class="hud-label">Độ sâu Z</span> <span id="hudZ" class="hud-val-highlight">—</span></div>
+          <div class="hud-depth-hero">
+            <span class="hud-swatch" id="hudSwatch" aria-hidden="true"></span>
+            <div class="hud-depth-main">
+              <span class="hud-depth-label">Độ sâu Z</span>
+              <span class="hud-depth-value" id="hudZ">—</span>
+            </div>
+          </div>
+          <div class="hud-meter" title="Vị trí trong phạm vi nông ↔ sâu">
+            <div class="hud-meter-track" id="hudMeterTrack">
+              <span class="hud-meter-fill" id="hudMeterFill"></span>
+              <span class="hud-meter-thumb" id="hudMeterThumb"></span>
+            </div>
+            <div class="hud-meter-ends">
+              <span>Nông</span>
+              <span>Sâu</span>
+            </div>
+          </div>
+          <div class="hud-meta">
+            <span class="hud-meta-id" id="hudPointID">—</span>
+            <span class="hud-meta-xy"><span id="hudX">—</span> · <span id="hudY">—</span></span>
           </div>
         </div>
 
@@ -267,17 +294,22 @@
             <i class="fa-solid fa-chart-area"></i> Mặt cắt ngang lòng sông
           </div>
           <div class="cs-stats">
-            <div class="cs-stat">
-              <span class="label">Chiều rộng</span>
-              <span class="value" id="csWidth">0 m</span>
-            </div>
-            <div class="cs-stat">
-              <span class="label">Sâu nhất</span>
-              <span class="value" id="csMaxDepth">0 m</span>
-            </div>
-            <div class="cs-stat">
-              <span class="label">Diện tích</span>
-              <span class="value" id="csArea">0 m²</span>
+            <div class="cs-meters">
+              <div class="cs-meter cs-meter-width" title="Chiều rộng mặt cắt A–B">
+                <span class="cs-meter-label">Rộng</span>
+                <div class="cs-meter-bar">
+                  <span class="cs-meter-fill" id="csWidthBar"></span>
+                </div>
+                <span class="cs-meter-value" id="csWidth">0 m</span>
+              </div>
+              <div class="cs-meter cs-meter-depth" title="Độ sâu lớn nhất dưới mực nước">
+                <span class="cs-meter-label">Sâu</span>
+                <span class="cs-meter-value accent" id="csMaxDepth">0 m</span>
+              </div>
+              <div class="cs-meter cs-meter-area" title="Diện tích ướt mặt cắt">
+                <span class="cs-meter-label">Diện tích</span>
+                <span class="cs-meter-value" id="csArea">0 m²</span>
+              </div>
             </div>
             <div class="cs-distance-origin" title="Gốc đo khoảng cách trên nhãn độ sâu">
               <span class="cs-distance-label">Khoảng cách</span>

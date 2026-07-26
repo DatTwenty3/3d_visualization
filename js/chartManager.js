@@ -11,7 +11,19 @@ class ChartManager {
     this._maxDepthIdx = -1;
     this.distanceOrigin = 'A'; // 'A' | 'B' — user-selectable origin for hover distance
     this.waterLevel = 0; // Visual water surface elevation (m)
+    this.colorPalette = 'bathymetry';
     this.initChart();
+  }
+
+  setColorPalette(paletteName) {
+    this.colorPalette = paletteName || 'bathymetry';
+    if (this._profiles && this._profiles.length > 0) {
+      return this.updateChart(this._profiles);
+    }
+    if (this._samples && this._samples.length > 0) {
+      return this.updateChart(this._samples);
+    }
+    return undefined;
   }
 
   initChart() {
@@ -494,10 +506,16 @@ class ChartManager {
       return 'rgba(0, 113, 227, 0.28)';
     }
     const { ctx, chartArea } = chart;
+    const palette = this.colorPalette || 'bathymetry';
+    // Vertical: shallow/surface (top, t≈1) → deep bed (bottom, t≈0)
     const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-    gradient.addColorStop(0, 'rgba(100, 180, 255, 0.18)');
-    gradient.addColorStop(0.4, 'rgba(0, 113, 227, 0.32)');
-    gradient.addColorStop(1, 'rgba(10, 40, 90, 0.42)');
+    const stops = [0, 0.25, 0.5, 0.75, 1];
+    stops.forEach((s) => {
+      const t = 1 - s; // top = shallow
+      const [r, g, b] = ColorRamps.getColor(t, palette);
+      const alpha = 0.18 + s * 0.28;
+      gradient.addColorStop(s, `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`);
+    });
     return gradient;
   }
 
