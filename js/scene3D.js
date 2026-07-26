@@ -12,6 +12,7 @@ class Scene3D {
 
     // Objects
     this.terrainMesh = null;
+    this.terrainSkirtMesh = null;
     this.wireframeMesh = null;
     this.pointCloud = null;
     this.waterMesh = null;
@@ -19,6 +20,7 @@ class Scene3D {
     this.gridHelper = null;
     this.contoursGroup = null;
     this.hoverMarker = null;
+    this.basemapGroup = null;
 
     // Raycaster for Hover Inspector
     this.raycaster = new THREE.Raycaster();
@@ -27,12 +29,17 @@ class Scene3D {
     // Parameters
     this.renderMode = 'surface'; // 'surface', 'wireframe', 'points', 'both'
     this.zScale = 3.0; // Z exaggeration factor
-    this.colorPalette = 'bathymetry';
+    this.colorPalette = 'rainbow';
     this.showWater = false;
+    this.showBasemap = true;
     this.waterLevel = 0; // Water surface elevation (m), default Z = 0
     this.showContours = true;
     this.contourInterval = 1; // Contour spacing (m), range 0.5–1
     this.cutPlanesGroup = null; // Multiple cut planes
+
+    // VN-2000 ↔ WGS84 projectors (set from app via CrossSection)
+    this._utmToLatLng = null;
+    this._latLngToUtm = null;
 
     // Data references
     this.dataLoader = null;
@@ -106,6 +113,12 @@ class Scene3D {
 
     // Clear previous objects
     if (this.terrainMesh) this.scene.remove(this.terrainMesh);
+    if (this.terrainSkirtMesh) {
+      this.scene.remove(this.terrainSkirtMesh);
+      if (this.terrainSkirtMesh.geometry) this.terrainSkirtMesh.geometry.dispose();
+      if (this.terrainSkirtMesh.material) this.terrainSkirtMesh.material.dispose();
+      this.terrainSkirtMesh = null;
+    }
     if (this.wireframeMesh) this.scene.remove(this.wireframeMesh);
     if (this.pointCloud) this.scene.remove(this.pointCloud);
     if (this.waterMesh) this.scene.remove(this.waterMesh);
@@ -129,6 +142,7 @@ class Scene3D {
       this.scene.remove(this.cutLineMesh);
       this.cutLineMesh = null;
     }
+    this.clearBasemap();
 
     if (!grid || grid.length === 0) return;
 
@@ -206,6 +220,9 @@ class Scene3D {
     this.terrainMesh.name = 'terrainMesh';
     this.scene.add(this.terrainMesh);
 
+    // Skirt walls: close the pit between bed edge and water/basemap level
+    this.rebuildTerrainSkirt();
+
     // 2. Wireframe Mesh
     const wireMat = new THREE.MeshBasicMaterial({
       color: 0x1e3a8a,
@@ -278,6 +295,9 @@ class Scene3D {
 
     // 8. Setup Raycaster Pointer Move Listener
     this.setupRaycaster();
+
+    // 9. Satellite basemap at water level with survey-corridor hole
+    this.rebuildBasemap();
 
     // Apply visibility according to renderMode
     this.updateRenderMode(this.renderMode);
@@ -497,6 +517,166 @@ class Scene3D {
     if (this.showContours) {
       this.drawContours3D();
     }
+
+    this.rebuildTerrainSkirt();
+    this.updateBasemapElevation();
+  }
+
+  _isGridCellValid(cell) {
+    return !!(cell && cell.valid !== false && cell.z != null);
+  }
+
+  /**
+   * Vertical skirts along survey footprint rim: bed → water level,
+   * so the basemap hole does not show the empty scene background.
+   */
+  rebuildTerrainSkirt() {
+    if (this.terrainSkirtMesh) {
+      this.scene.remove(this.terrainSkirtMesh);
+      if (this.terrainSkirtMesh.geometry) this.terrainSkirtMesh.geometry.dispose();
+      if (this.terrainSkirtMesh.material) this.terrainSkirtMesh.material.dispose();
+      this.terrainSkirtMesh = null;
+    }
+
+    if (!this.dataLoader || !this.dataLoader.grid) return;
+    const grid = this.dataLoader.grid;
+    const rows = grid.length;
+    const cols = grid[0].length;
+    if (rows < 2 || cols < 2) return;
+
+    const topY = this.waterLevel * this.zScale;
+    const positions = [];
+    const colors = [];
+    const indices = [];
+
+    const pushWall = (a, b) => {
+      const y0 = a.localY * this.zScale;
+      const y1 = b.localY * this.zScale;
+      // Skip nearly flat walls (bed already at/above water)
+      if (y0 >= topY - 0.05 && y1 >= topY - 0.05) return;
+
+      const rgbA = ColorRamps.getColor(a.normZ, this.colorPalette);
+      const rgbB = ColorRamps.getColor(b.normZ, this.colorPalette);
+      // Slightly darken walls so they read as under-bank fill
+      const dim = 0.72;
+      const base = positions.length / 3;
+
+      positions.push(a.localX, y0, a.localZ);
+      colors.push((rgbA[0] / 255) * dim, (rgbA[1] / 255) * dim, (rgbA[2] / 255) * dim);
+      positions.push(b.localX, y1, b.localZ);
+      colors.push((rgbB[0] / 255) * dim, (rgbB[1] / 255) * dim, (rgbB[2] / 255) * dim);
+      positions.push(b.localX, topY, b.localZ);
+      colors.push((rgbB[0] / 255) * dim, (rgbB[1] / 255) * dim, (rgbB[2] / 255) * dim);
+      positions.push(a.localX, topY, a.localZ);
+      colors.push((rgbA[0] / 255) * dim, (rgbA[1] / 255) * dim, (rgbA[2] / 255) * dim);
+
+      indices.push(base, base + 1, base + 2);
+      indices.push(base, base + 2, base + 3);
+    };
+
+    const hasFace = (r, c) => {
+      if (r < 0 || c < 0 || r >= rows - 1 || c >= cols - 1) return false;
+      return (
+        this._isGridCellValid(grid[r][c]) &&
+        this._isGridCellValid(grid[r][c + 1]) &&
+        this._isGridCellValid(grid[r + 1][c + 1]) &&
+        this._isGridCellValid(grid[r + 1][c])
+      );
+    };
+
+    // Horizontal edges (same row, adjacent cols)
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        if (!this._isGridCellValid(grid[r][c]) || !this._isGridCellValid(grid[r][c + 1])) continue;
+        const faceN = hasFace(r - 1, c);
+        const faceS = hasFace(r, c);
+        if (faceN === faceS) continue; // internal or both open thin bridge → one wall if both open
+        if (!faceN || !faceS) pushWall(grid[r][c], grid[r][c + 1]);
+      }
+    }
+
+    // Vertical edges (same col, adjacent rows)
+    for (let r = 0; r < rows - 1; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!this._isGridCellValid(grid[r][c]) || !this._isGridCellValid(grid[r + 1][c])) continue;
+        const faceW = hasFace(r, c - 1);
+        const faceE = hasFace(r, c);
+        if (faceW === faceE) continue;
+        if (!faceW || !faceE) pushWall(grid[r][c], grid[r + 1][c]);
+      }
+    }
+
+    if (indices.length === 0) return;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.55,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+      flatShading: true
+    });
+
+    this.terrainSkirtMesh = new THREE.Mesh(geo, mat);
+    this.terrainSkirtMesh.name = 'terrainSkirt';
+    this.terrainSkirtMesh.renderOrder = -1;
+    const showSurface = this.renderMode === 'surface' || this.renderMode === 'both';
+    this.terrainSkirtMesh.visible = showSurface;
+    this.scene.add(this.terrainSkirtMesh);
+  }
+
+  /**
+   * Bind VN-2000 ↔ WGS84 converters from CrossSection
+   */
+  setBasemapProjectors(utmToLatLng, latLngToUtm) {
+    this._utmToLatLng = utmToLatLng;
+    this._latLngToUtm = latLngToUtm;
+  }
+
+  clearBasemap() {
+    if (!this.basemapGroup) return;
+    if (window.Basemap3D) Basemap3D.dispose(this.basemapGroup);
+    this.scene.remove(this.basemapGroup);
+    this.basemapGroup = null;
+  }
+
+  rebuildBasemap() {
+    this.clearBasemap();
+    if (!this.showBasemap || !this.dataLoader || !window.Basemap3D) return;
+    if (!this._utmToLatLng || !this._latLngToUtm) return;
+
+    const group = Basemap3D.build({
+      bounds: this.dataLoader.bounds,
+      grid: this.dataLoader.grid,
+      utmToLatLng: this._utmToLatLng,
+      latLngToUtm: this._latLngToUtm
+    });
+    if (!group) return;
+
+    group.visible = this.showBasemap;
+    this.basemapGroup = group;
+    this.scene.add(group);
+    this.updateBasemapElevation();
+  }
+
+  updateBasemapElevation() {
+    if (!this.basemapGroup) return;
+    const bias = (window.Basemap3D && Basemap3D.WATER_Y_BIAS) || 0.35;
+    this.basemapGroup.position.y = this.waterLevel * this.zScale - bias;
+  }
+
+  setBasemapVisible(visible) {
+    this.showBasemap = !!visible;
+    if (this.basemapGroup) {
+      this.basemapGroup.visible = this.showBasemap;
+    } else if (this.showBasemap) {
+      this.rebuildBasemap();
+    }
   }
 
   /**
@@ -530,6 +710,8 @@ class Scene3D {
       }
     }
 
+    this.rebuildTerrainSkirt();
+
     // 2. Update Point Cloud vertex colors
     if (this.pointCloud && this.pointCloud.geometry) {
       const pcColorAttr = this.pointCloud.geometry.attributes.color;
@@ -555,6 +737,7 @@ class Scene3D {
   updateRenderMode(mode) {
     this.renderMode = mode;
     if (this.terrainMesh) this.terrainMesh.visible = (mode === 'surface' || mode === 'both');
+    if (this.terrainSkirtMesh) this.terrainSkirtMesh.visible = (mode === 'surface' || mode === 'both');
     if (this.wireframeMesh) this.wireframeMesh.visible = (mode === 'wireframe' || mode === 'both');
     if (this.pointCloud) this.pointCloud.visible = (mode === 'points');
   }
@@ -575,6 +758,8 @@ class Scene3D {
     if (this.waterMesh) {
       this.waterMesh.position.y = this.waterLevel * this.zScale;
     }
+    this.rebuildTerrainSkirt();
+    this.updateBasemapElevation();
   }
 
   /**

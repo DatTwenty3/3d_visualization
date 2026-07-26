@@ -11,12 +11,12 @@ class ChartManager {
     this._maxDepthIdx = -1;
     this.distanceOrigin = 'A'; // 'A' | 'B' — user-selectable origin for hover distance
     this.waterLevel = 0; // Visual water surface elevation (m)
-    this.colorPalette = 'bathymetry';
+    this.colorPalette = 'rainbow';
     this.initChart();
   }
 
   setColorPalette(paletteName) {
-    this.colorPalette = paletteName || 'bathymetry';
+    this.colorPalette = paletteName || 'rainbow';
     if (this._profiles && this._profiles.length > 0) {
       return this.updateChart(this._profiles);
     }
@@ -506,7 +506,7 @@ class ChartManager {
       return 'rgba(0, 113, 227, 0.28)';
     }
     const { ctx, chartArea } = chart;
-    const palette = this.colorPalette || 'bathymetry';
+    const palette = this.colorPalette || 'rainbow';
     // Vertical: shallow/surface (top, t≈1) → deep bed (bottom, t≈0)
     const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
     const stops = [0, 0.25, 0.5, 0.75, 1];

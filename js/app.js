@@ -21,9 +21,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   window.crossSection = crossSection;
 
+  // Bind VN-2000 projectors for 3D Google Hybrid ground basemap
+  scene3D.setBasemapProjectors(
+    (x, y) => crossSection.utmToLatLng(x, y),
+    (lat, lng) => crossSection.latLngToUtm(lat, lng)
+  );
+
   /** Sync depth ribbon + legend labels from dataset bounds */
   function updateDepthInstruments(palette) {
-    const paletteName = palette || (document.getElementById('paletteSelect')?.value) || 'bathymetry';
+    const paletteName = palette || (document.getElementById('paletteSelect')?.value) || 'rainbow';
     // Display LTR: nông (shallow) → sâu (deep) — reverse of ColorRamps stop order
     const gradient = ColorRamps.getLegendGradientCSS(paletteName).replace('to right', 'to left');
     const ribbon = document.getElementById('quickStats');
@@ -90,6 +96,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     epsgSelect.value = crossSection.getEpsg();
     epsgSelect.addEventListener('change', () => {
       crossSection.setEpsg(epsgSelect.value);
+      scene3D.rebuildBasemap();
     });
   }
 
@@ -180,8 +187,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     crossSection.drawMap();
     updateDepthInstruments(palette);
   });
-  updateDepthInstruments('bathymetry');
-  chartManager.setColorPalette('bathymetry');
+  updateDepthInstruments('rainbow');
+  chartManager.setColorPalette('rainbow');
 
 
 
@@ -200,6 +207,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   chkWater.addEventListener('change', (e) => {
     scene3D.setWaterVisible(e.target.checked);
   });
+
+  // 3D Google Hybrid ground basemap toggle
+  const chkBasemap3D = document.getElementById('chkBasemap3D');
+  if (chkBasemap3D) {
+    scene3D.setBasemapVisible(chkBasemap3D.checked);
+    chkBasemap3D.addEventListener('change', (e) => {
+      scene3D.setBasemapVisible(e.target.checked);
+    });
+  }
 
   // Water Level Elevation Input
   const waterLevelInput = document.getElementById('waterLevelInput');

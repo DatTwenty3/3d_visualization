@@ -1,15 +1,15 @@
-# AGENTS.md - AULAC RIVER 3D DASHBOARD
+# AGENTS.md - AULAC OCEANUS 3D DASHBOARD
 **Công ty Cổ phần Tư vấn Xây dựng Âu Lạc**
 
 ## Overview
-Hệ thống trực quan hóa 3D dữ liệu đo độ sâu lòng sông và phân tích mặt cắt địa hình đáy sông (**AULAC RIVER 3D DASHBOARD**).
+Hệ thống trực quan hóa 3D dữ liệu đo độ sâu lòng sông và phân tích mặt cắt địa hình đáy sông (**AULAC OCEANUS 3D DASHBOARD**).
 Sản phẩm phần mềm web GIS 3D chuyên dụng thuộc **Công ty Cổ phần Tư vấn Xây dựng Âu Lạc**, thiết kế dưới dạng Single-Page Web Dashboard hiện đại, chạy mượt mà trực tiếp trên trình duyệt web không cần các bước build rườm rà.
 
 ## Project Structure & Architecture
 ```
 d:\4. code\3d_visualization\
 ├── AGENTS.md                                   # Quy chuẩn & Hướng dẫn dự án Âu Lạc
-├── index.html                                  # Khung giao diện Web Dashboard AULAC RIVER 3D
+├── index.html                                  # Khung giao diện Web Dashboard AULAC OCEANUS 3D
 ├── AULAC.png                                   # Logo Công ty CP Tư vấn Xây dựng Âu Lạc
 ├── Travinh - HS_L0002_2026-03-06-sang.txt      # File dữ liệu đo độ sâu mặc định (VN-2000)
 ├── css/

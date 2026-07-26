@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AULAC RIVER 3D | Hệ Thống Trực Quan Hóa 3D Địa Hình Đáy Sông - Công Ty CP Tư Vấn Xây Dựng Âu Lạc</title>
+  <title>AULAC OCEANUS 3D | Hệ Thống Trực Quan Hóa 3D Địa Hình Đáy Sông - Công Ty CP Tư Vấn Xây Dựng Âu Lạc</title>
 
   <!-- Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -45,7 +45,7 @@
         <img src="AULAC.png" alt="Công ty CP Tư vấn Xây dựng Âu Lạc Logo" class="brand-logo" />
       </div>
       <div class="brand-title">
-        <h1>AULAC RIVER 3D</h1>
+        <h1>AULAC OCEANUS 3D</h1>
         <p>Trực quan hóa độ sâu lòng sông · Âu Lạc</p>
       </div>
     </div>
@@ -159,8 +159,8 @@
               <div class="form-group">
                 <label for="paletteSelect">Thang màu</label>
                 <select class="form-control" id="paletteSelect">
-                  <option value="bathymetry" selected>Ocean Bathymetry</option>
-                  <option value="rainbow">Rainbow Spectrum</option>
+                  <option value="bathymetry">Ocean Bathymetry</option>
+                  <option value="rainbow" selected>Rainbow Spectrum</option>
                   <option value="viridis">Viridis</option>
                   <option value="thermal">Thermal</option>
                   <option value="terrain">Terrain</option>
@@ -172,6 +172,11 @@
                     <span class="legend-end deep"><em>Sâu</em> <span id="legendDeepZ">—</span></span>
                   </div>
                 </div>
+              </div>
+
+              <div class="sidebar-row">
+                <input type="checkbox" id="chkBasemap3D" checked>
+                <label for="chkBasemap3D">Bản đồ nền</label>
               </div>
 
               <div class="sidebar-row">
@@ -338,6 +343,7 @@
   <script src="js/colorRamps.js"></script>
   <script src="js/dataLoader.js"></script>
   <script src="js/kmlLoader.js"></script>
+  <script src="js/basemap3D.js"></script>
   <script src="js/scene3D.js"></script>
   <script src="js/crossSection.js"></script>
   <script src="js/chartManager.js"></script>
