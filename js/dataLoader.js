@@ -15,6 +15,48 @@ class DataLoader {
     };
     this.grid = null;
     this.gridResolution = 80; // Grid resolution for mesh interpolation
+    this._idwSearchRadius = 50; // meters; updated in buildGrid from point density
+  }
+
+  /**
+   * Median nearest-neighbor distance from a subsample of survey points (meters).
+   * Used to size IDW search radius so gaps between survey lines fill without
+   * extrapolating far outside the point cloud.
+   */
+  _estimateMedianNearestNeighbor(maxSamples = 400) {
+    const points = this.points;
+    if (!points || points.length < 2) return 10;
+
+    const n = points.length;
+    const sampleCount = Math.min(n, maxSamples);
+    const step = Math.max(1, Math.floor(n / sampleCount));
+    const sample = [];
+    for (let i = 0; i < n && sample.length < sampleCount; i += step) {
+      sample.push(points[i]);
+    }
+
+    const nnDists = [];
+    for (let i = 0; i < sample.length; i++) {
+      const a = sample[i];
+      let best = Infinity;
+      for (let j = 0; j < sample.length; j++) {
+        if (i === j) continue;
+        const dx = a.x - sample[j].x;
+        const dy = a.y - sample[j].y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq > 0 && dSq < best) best = dSq;
+      }
+      if (Number.isFinite(best) && best < Infinity) {
+        nnDists.push(Math.sqrt(best));
+      }
+    }
+
+    if (nnDists.length === 0) return 10;
+    nnDists.sort((a, b) => a - b);
+    const mid = Math.floor(nnDists.length / 2);
+    return nnDists.length % 2 === 0
+      ? 0.5 * (nnDists[mid - 1] + nnDists[mid])
+      : nnDists[mid];
   }
 
   /**
@@ -98,13 +140,18 @@ class DataLoader {
   }
 
   /**
-   * Interpolate unstructured points onto a regular 2D grid (Inverse Distance Weighting IDW)
+   * Interpolate unstructured points onto a regular 2D grid (Inverse Distance Weighting IDW).
+   * Cells farther than adaptive searchRadius from any survey point are marked invalid.
    */
   buildGrid() {
     const res = this.gridResolution;
-    const { minX, maxX, minY, maxY, minZ } = this.bounds;
+    const { minX, maxX, minY, maxY } = this.bounds;
     const stepX = (maxX - minX) / (res - 1);
     const stepY = (maxY - minY) / (res - 1);
+    const medianNN = this._estimateMedianNearestNeighbor();
+    const searchRadius = Math.max(medianNN * 3.5, Math.max(stepX, stepY) * 1.5);
+    this._idwSearchRadius = searchRadius;
+    const searchRadiusSq = searchRadius * searchRadius;
 
     const grid = [];
     const points = this.points;
@@ -115,25 +162,16 @@ class DataLoader {
       for (let j = 0; j < res; j++) {
         const gy = minY + j * stepY;
 
-        // IDW Interpolation with nearest neighbors
         let totalWeight = 0;
         let weightedZ = 0;
-        let minDistanceSq = Infinity;
-        let closestZ = minZ;
 
-        // Simple spatial lookup
         for (let k = 0; k < points.length; k++) {
           const p = points[k];
           const dx = p.x - gx;
           const dy = p.y - gy;
           const distSq = dx * dx + dy * dy;
 
-          if (distSq < minDistanceSq) {
-            minDistanceSq = distSq;
-            closestZ = p.z;
-          }
-
-          if (distSq < (stepX * stepY * 16)) { // Neighbor search radius
+          if (distSq <= searchRadiusSq) {
             const dist = Math.sqrt(distSq) || 0.0001;
             const weight = 1 / (dist * dist);
             totalWeight += weight;
@@ -141,17 +179,33 @@ class DataLoader {
           }
         }
 
-        const interpolatedZ = totalWeight > 0 ? (weightedZ / totalWeight) : closestZ;
+        const localX = gy - this.bounds.meanY; // Easting → East
+        const localZ = -(gx - this.bounds.meanX); // −Northing → South
 
-        row.push({
-          x: gx,
-          y: gy,
-          z: interpolatedZ,
-          localX: gy - this.bounds.meanY, // Easting → East
-          localY: interpolatedZ,
-          localZ: -(gx - this.bounds.meanX), // −Northing → South
-          normZ: (interpolatedZ - this.bounds.minZ) / (this.bounds.maxZ - this.bounds.minZ || 1)
-        });
+        if (totalWeight > 0) {
+          const interpolatedZ = weightedZ / totalWeight;
+          row.push({
+            x: gx,
+            y: gy,
+            z: interpolatedZ,
+            valid: true,
+            localX,
+            localY: interpolatedZ,
+            localZ,
+            normZ: (interpolatedZ - this.bounds.minZ) / (this.bounds.maxZ - this.bounds.minZ || 1)
+          });
+        } else {
+          row.push({
+            x: gx,
+            y: gy,
+            z: null,
+            valid: false,
+            localX,
+            localY: 0,
+            localZ,
+            normZ: 0
+          });
+        }
       }
       grid.push(row);
     }
@@ -160,7 +214,8 @@ class DataLoader {
   }
 
   /**
-   * Sample depth Z along line segment (x1, y1) to (x2, y2)
+   * Sample depth Z along line segment (x1, y1) to (x2, y2).
+   * Skips locations outside the IDW search radius (no data).
    */
   sampleProfile(x1, y1, x2, y2, numSamples = 100) {
     if (!this.points || this.points.length === 0) return [];
@@ -174,21 +229,21 @@ class DataLoader {
       const frac = i / numSamples;
       const curX = x1 + frac * dx;
       const curY = y1 + frac * dy;
-      samples.push(this._makeSample(curX, curY, frac * totalDistance));
+      const sample = this._makeSample(curX, curY, frac * totalDistance);
+      if (sample) samples.push(sample);
     }
     return samples;
   }
 
   /**
-   * IDW Z at (x, y) and build a profile sample record
+   * IDW Z at (x, y). Returns null when no survey point is within adaptive search radius.
    */
   interpolateZ(curX, curY) {
-    if (!this.points || this.points.length === 0) return 0;
-    const { minZ } = this.bounds;
+    if (!this.points || this.points.length === 0) return null;
     let totalWeight = 0;
     let weightedZ = 0;
-    let nearestDistSq = Infinity;
-    let nearestZ = minZ;
+    const radius = this._idwSearchRadius > 0 ? this._idwSearchRadius : 50;
+    const searchRadiusSq = radius * radius;
 
     for (let k = 0; k < this.points.length; k++) {
       const p = this.points[k];
@@ -196,12 +251,7 @@ class DataLoader {
       const pdy = p.y - curY;
       const dSq = pdx * pdx + pdy * pdy;
 
-      if (dSq < nearestDistSq) {
-        nearestDistSq = dSq;
-        nearestZ = p.z;
-      }
-
-      if (dSq < 2500) { // 50m search radius
+      if (dSq <= searchRadiusSq) {
         const dist = Math.sqrt(dSq) || 0.0001;
         const weight = 1 / (dist * dist);
         totalWeight += weight;
@@ -209,18 +259,23 @@ class DataLoader {
       }
     }
 
-    return totalWeight > 0 ? (weightedZ / totalWeight) : nearestZ;
+    return totalWeight > 0 ? (weightedZ / totalWeight) : null;
   }
 
+  /**
+   * @returns {object|null} sample record, or null if no data nearby
+   */
   _makeSample(curX, curY, distFromStart) {
     const { minZ, maxZ, meanX, meanY } = this.bounds;
     const z = this.interpolateZ(curX, curY);
+    if (z == null || !Number.isFinite(z)) return null;
     return {
       distance: distFromStart,
       x: curX,
       y: curY,
       z: z,
       depth: -z,
+      valid: true,
       localX: curY - meanY, // Easting → East
       localY: z,
       localZ: -(curX - meanX), // −Northing → South
@@ -230,6 +285,7 @@ class DataLoader {
 
   /**
    * Sample profile along a polyline (array of {x,y}), evenly by chainage.
+   * Skips locations outside the IDW search radius.
    */
   sampleProfilePolyline(points, numSamples = 100) {
     if (!this.points || this.points.length === 0) return [];
@@ -243,7 +299,8 @@ class DataLoader {
       total += len;
     }
     if (total < 1e-9) {
-      return [this._makeSample(points[0].x, points[0].y, 0)];
+      const only = this._makeSample(points[0].x, points[0].y, 0);
+      return only ? [only] : [];
     }
 
     const samples = [];
@@ -259,7 +316,8 @@ class DataLoader {
       const t = seg.len > 1e-9 ? (target - seg.s0) / seg.len : 0;
       const curX = seg.a.x + t * (seg.b.x - seg.a.x);
       const curY = seg.a.y + t * (seg.b.y - seg.a.y);
-      samples.push(this._makeSample(curX, curY, target));
+      const sample = this._makeSample(curX, curY, target);
+      if (sample) samples.push(sample);
     }
     return samples;
   }
@@ -289,6 +347,8 @@ class DataLoader {
     const rows = this.grid.length;
     const cols = this.grid[0].length;
 
+    const cellValid = (p) => p && p.valid !== false && p.z != null && Number.isFinite(p.z);
+
     levels.forEach(level => {
       const lineSegments = [];
 
@@ -298,6 +358,8 @@ class DataLoader {
           const p1 = this.grid[r][c + 1];   // Top-Right
           const p2 = this.grid[r + 1][c + 1]; // Bottom-Right
           const p3 = this.grid[r + 1][c];   // Bottom-Left
+
+          if (!cellValid(p0) || !cellValid(p1) || !cellValid(p2) || !cellValid(p3)) continue;
 
           let config = 0;
           if (p0.z >= level) config |= 8;

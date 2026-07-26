@@ -142,29 +142,41 @@ class Scene3D {
     const uvs = [];
     const indices = [];
 
-    // Populate vertices
+    // Populate vertices (invalid cells keep Y=0; no faces attached below)
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const p = grid[r][c];
+        const valid = p.valid !== false && p.z != null;
 
-        // Apply Z scale exaggeration
         const x3d = p.localX;
-        const y3d = p.localY * this.zScale;
+        const y3d = valid ? p.localY * this.zScale : 0;
         const z3d = p.localZ;
 
         positions.push(x3d, y3d, z3d);
 
-        // Color based on normalized depth
-        const rgb = ColorRamps.getColor(p.normZ, this.colorPalette);
+        const rgb = ColorRamps.getColor(valid ? p.normZ : 0, this.colorPalette);
         colors.push(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
 
         uvs.push(r / (rows - 1), c / (cols - 1));
       }
     }
 
-    // Build grid face indices (2 triangles per quad)
+    // Build grid face indices only where all 4 corners have survey data nearby
     for (let r = 0; r < rows - 1; r++) {
       for (let c = 0; c < cols - 1; c++) {
+        const p00 = grid[r][c];
+        const p01 = grid[r][c + 1];
+        const p11 = grid[r + 1][c + 1];
+        const p10 = grid[r + 1][c];
+        if (
+          p00.valid === false || p00.z == null ||
+          p01.valid === false || p01.z == null ||
+          p11.valid === false || p11.z == null ||
+          p10.valid === false || p10.z == null
+        ) {
+          continue;
+        }
+
         const a = r * cols + c;
         const b = r * cols + (c + 1);
         const cIdx = (r + 1) * cols + (c + 1);
@@ -397,9 +409,19 @@ class Scene3D {
         document.getElementById('hudX').textContent = utmX.toFixed(2) + ' m';
         document.getElementById('hudY').textContent = utmY.toFixed(2) + ' m';
         document.getElementById('hudZ').textContent = depthZ.toFixed(2) + ' m (' + (-depthZ).toFixed(2) + 'm sâu)';
+        const hud = document.getElementById('hoverInfoHUD');
+        if (hud) hud.classList.add('visible');
       } else {
         if (this.hoverMarker) this.hoverMarker.visible = false;
+        const hud = document.getElementById('hoverInfoHUD');
+        if (hud) hud.classList.remove('visible');
       }
+    });
+
+    container.addEventListener('pointerleave', () => {
+      if (this.hoverMarker) this.hoverMarker.visible = false;
+      const hud = document.getElementById('hoverInfoHUD');
+      if (hud) hud.classList.remove('visible');
     });
   }
 
@@ -422,7 +444,12 @@ class Scene3D {
         let idx = 0;
         for (let r = 0; r < grid.length; r++) {
           for (let c = 0; c < grid[r].length; c++) {
-            pos[idx + 1] = grid[r][c].localY * scale; // Update Y elevation
+            const cell = grid[r][c];
+            if (cell.valid !== false && cell.z != null) {
+              pos[idx + 1] = cell.localY * scale;
+            } else {
+              pos[idx + 1] = 0;
+            }
             idx += 3;
           }
         }
@@ -473,7 +500,11 @@ class Scene3D {
         let idx = 0;
         for (let r = 0; r < grid.length; r++) {
           for (let c = 0; c < grid[r].length; c++) {
-            const rgb = ColorRamps.getColor(grid[r][c].normZ, paletteName);
+            const cell = grid[r][c];
+            const rgb = ColorRamps.getColor(
+              (cell.valid !== false && cell.z != null) ? cell.normZ : 0,
+              paletteName
+            );
             colors[idx] = rgb[0] / 255;
             colors[idx + 1] = rgb[1] / 255;
             colors[idx + 2] = rgb[2] / 255;

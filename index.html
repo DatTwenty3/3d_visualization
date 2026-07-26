@@ -22,7 +22,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
-<body>
+<body data-workspace="overview">
 
   <!-- Ambient liquid light (behind frosted glass) -->
   <div class="liquid-ambient" aria-hidden="true">
@@ -50,24 +50,27 @@
       </div>
     </div>
 
-    <!-- Quick Stats Bar -->
-    <div class="quick-stats">
+    <!-- Workspace focus modes -->
+    <div class="workspace-modes" role="tablist" aria-label="Chế độ hiển thị">
+      <button type="button" class="workspace-mode-btn active" data-workspace="overview" role="tab" aria-selected="true">Tổng quan</button>
+      <button type="button" class="workspace-mode-btn" data-workspace="3d" role="tab" aria-selected="false">3D</button>
+      <button type="button" class="workspace-mode-btn" data-workspace="map" role="tab" aria-selected="false">Bản đồ</button>
+      <button type="button" class="workspace-mode-btn" data-workspace="section" role="tab" aria-selected="false">Mặt cắt</button>
+    </div>
+
+    <!-- Compact Quick Stats -->
+    <div class="quick-stats" id="quickStats"
+         title="Nông nhất: — · Trung bình: —">
       <div class="stat-item">
         <span class="label">Điểm đo</span>
-        <span class="value" id="statTotalPoints">3,043</span>
+        <span class="value" id="statTotalPoints">—</span>
       </div>
       <div class="stat-item">
         <span class="label">Sâu nhất</span>
-        <span class="value" id="statMaxDepth">-6.41 m</span>
+        <span class="value" id="statMaxDepth">—</span>
       </div>
-      <div class="stat-item">
-        <span class="label">Nông nhất</span>
-        <span class="value" id="statMinDepth">-2.53 m</span>
-      </div>
-      <div class="stat-item">
-        <span class="label">Trung bình</span>
-        <span class="value" id="statAvgDepth">-4.12 m</span>
-      </div>
+      <span class="stat-secondary" id="statMinDepth" hidden>-2.53 m</span>
+      <span class="stat-secondary" id="statAvgDepth" hidden>-4.12 m</span>
     </div>
 
     <!-- Actions -->
@@ -88,111 +91,134 @@
       <!-- 3D Canvas Viewport -->
       <div class="viewports-container">
 
-        <!-- Floating tools overlay (content-sized) -->
-        <aside class="app-sidebar liquid-glass">
+        <!-- Drawer backdrop -->
+        <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+        <!-- Tools drawer (closed by default) -->
+        <aside class="app-sidebar liquid-glass" id="appSidebar" aria-hidden="true">
+          <div class="sidebar-drawer-header">
+            <span class="sidebar-drawer-title"><i class="fa-solid fa-sliders"></i> Công cụ</span>
+            <button type="button" class="icon-btn" id="btnCloseSidebar" title="Đóng công cụ" aria-label="Đóng công cụ">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
 
           <!-- Dataset -->
           <div class="sidebar-section">
-            <div class="section-title">
-              <i class="fa-solid fa-database"></i> Dữ liệu
-            </div>
-            <div class="sidebar-file" id="fileNameLabel" title="Travinh - HS_L0002_2026-03-06-sang.txt">
-              Travinh - HS_L0002_2026-03-06-sang.txt
-            </div>
-            <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
-              <label for="epsgSelect">Hệ tọa độ (EPSG)</label>
-              <select class="form-control" id="epsgSelect" title="Múi chiếu VN-2000 của file đo">
-                <option value="9209" selected>9209 · TM-3 105°30′</option>
-                <option value="9210">9210 · TM-3 105°45′</option>
-                <option value="5897">5897 · TM-3 105°00′</option>
-              </select>
+            <button type="button" class="section-title" aria-expanded="false" data-section="data">
+              <span class="section-title-label"><i class="fa-solid fa-database"></i> Dữ liệu</span>
+              <i class="fa-solid fa-chevron-down section-chevron"></i>
+            </button>
+            <div class="section-body" hidden>
+              <div class="sidebar-file" id="fileNameLabel" title="Travinh - HS_L0002_2026-03-06-sang.txt">
+                Travinh - HS_L0002_2026-03-06-sang.txt
+              </div>
+              <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
+                <label for="epsgSelect">Hệ tọa độ (EPSG)</label>
+                <select class="form-control" id="epsgSelect" title="Múi chiếu VN-2000 của file đo">
+                  <option value="9209" selected>9209 · TM-3 105°30′</option>
+                  <option value="9210">9210 · TM-3 105°45′</option>
+                  <option value="5897">5897 · TM-3 105°00′</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          <!-- Display -->
-          <div class="sidebar-section">
-            <div class="section-title">
-              <i class="fa-solid fa-cube"></i> Hiển thị
-            </div>
-
-            <div class="form-group">
-              <label>
-                <span>Phóng đại độ sâu</span>
-                <span id="zScaleValue" style="color: var(--accent-orange); font-weight: 600;">3x</span>
-              </label>
-              <input type="range" class="form-range" id="zScaleInput" min="1" max="10" step="0.5" value="3">
-            </div>
-
-            <div class="form-group">
-              <label>Chế độ</label>
-              <div class="toggle-group">
-                <button type="button" class="toggle-btn active" data-mode="surface">Lưới</button>
-                <button type="button" class="toggle-btn" data-mode="wireframe">Khung</button>
-                <button type="button" class="toggle-btn" data-mode="points">Điểm</button>
-                <button type="button" class="toggle-btn" data-mode="both">Kết hợp</button>
+          <!-- Display (open by default) -->
+          <div class="sidebar-section open">
+            <button type="button" class="section-title" aria-expanded="true" data-section="display">
+              <span class="section-title-label"><i class="fa-solid fa-cube"></i> Hiển thị</span>
+              <i class="fa-solid fa-chevron-down section-chevron"></i>
+            </button>
+            <div class="section-body">
+              <div class="form-group">
+                <label>
+                  <span>Phóng đại độ sâu</span>
+                  <span id="zScaleValue" style="color: var(--accent-orange); font-weight: 600;">3x</span>
+                </label>
+                <input type="range" class="form-range" id="zScaleInput" min="1" max="10" step="0.5" value="3">
               </div>
-            </div>
 
-            <div class="form-group">
-              <label for="paletteSelect">Thang màu</label>
-              <select class="form-control" id="paletteSelect">
-                <option value="bathymetry" selected>Ocean Bathymetry</option>
-                <option value="rainbow">Rainbow Spectrum</option>
-                <option value="viridis">Viridis</option>
-                <option value="thermal">Thermal</option>
-                <option value="terrain">Terrain</option>
-              </select>
-              <div class="color-legend-bar" id="colorLegendBar"></div>
-            </div>
+              <div class="form-group">
+                <label>Chế độ</label>
+                <div class="toggle-group">
+                  <button type="button" class="toggle-btn active" data-mode="surface">Lưới</button>
+                  <button type="button" class="toggle-btn" data-mode="wireframe">Khung</button>
+                  <button type="button" class="toggle-btn" data-mode="points">Điểm</button>
+                  <button type="button" class="toggle-btn" data-mode="both">Kết hợp</button>
+                </div>
+              </div>
 
-            <div class="sidebar-row">
-              <input type="checkbox" id="chkWater" checked>
-              <label for="chkWater">Mặt nước</label>
-              <input type="number" class="form-control" id="waterLevelInput" step="0.1" value="0" title="Cao độ mặt nước (m)" aria-label="Cao độ mặt nước (m)">
-              <span class="sidebar-unit">m</span>
-            </div>
+              <div class="form-group">
+                <label for="paletteSelect">Thang màu</label>
+                <select class="form-control" id="paletteSelect">
+                  <option value="bathymetry" selected>Ocean Bathymetry</option>
+                  <option value="rainbow">Rainbow Spectrum</option>
+                  <option value="viridis">Viridis</option>
+                  <option value="thermal">Thermal</option>
+                  <option value="terrain">Terrain</option>
+                </select>
+                <div class="color-legend-bar" id="colorLegendBar"></div>
+              </div>
 
-            <div class="sidebar-row">
-              <input type="checkbox" id="chkContours" checked>
-              <label for="chkContours">Đồng mức</label>
-              <input type="number" class="form-control" id="contourIntervalInput" min="0.5" max="1" step="0.1" value="1" title="Khoảng đồng mức (m)" aria-label="Khoảng đồng mức (m)">
-              <span class="sidebar-unit">m</span>
+              <div class="sidebar-row">
+                <input type="checkbox" id="chkWater" checked>
+                <label for="chkWater">Mặt nước</label>
+                <input type="number" class="form-control" id="waterLevelInput" step="0.1" value="0" title="Cao độ mặt nước (m)" aria-label="Cao độ mặt nước (m)">
+                <span class="sidebar-unit">m</span>
+              </div>
+
+              <div class="sidebar-row">
+                <input type="checkbox" id="chkContours" checked>
+                <label for="chkContours">Đồng mức</label>
+                <input type="number" class="form-control" id="contourIntervalInput" min="0.5" max="1" step="0.1" value="1" title="Khoảng đồng mức (m)" aria-label="Khoảng đồng mức (m)">
+                <span class="sidebar-unit">m</span>
+              </div>
             </div>
           </div>
 
           <!-- Cut line -->
           <div class="sidebar-section">
-            <div class="section-title">
-              <i class="fa-solid fa-slash"></i> Đường cắt
-            </div>
-            <div class="form-group">
-              <div class="toggle-group" title="Cần tải tim tuyến KML/KMZ để dùng Ngang / Dọc · Kéo đường cắt / nút giữa để dời">
-                <button type="button" class="toggle-btn active" data-cut-mode="free">Tự do</button>
-                <button type="button" class="toggle-btn" data-cut-mode="transverse" title="Cần tải tim tuyến KML/KMZ" disabled>Ngang</button>
-                <button type="button" class="toggle-btn" data-cut-mode="longitudinal" title="Cần tải tim tuyến KML/KMZ" disabled>Dọc</button>
-              </div>
-            </div>
-            <div class="sidebar-row centerline-row">
-              <input type="file" id="centerlineFileInput" accept=".kml,.kmz" style="display: none;">
-              <button type="button" class="btn btn-centerline" id="btnUploadCenterline" title="Tải tim tuyến từ KML/KMZ">
-                <i class="fa-solid fa-route"></i> Tim tuyến
-              </button>
-              <span class="centerline-file" id="centerlineFileLabel" title="">Chưa có</span>
-              <button type="button" class="icon-btn centerline-clear" id="btnClearCenterline" title="Xóa tim tuyến" disabled>
-                <i class="fa-solid fa-xmark"></i>
-              </button>
-            </div>
-            <div class="sidebar-row">
-              <input type="checkbox" id="chkSnapPoints" checked title="Snap điểm đo trong bán kính ~8 m">
-              <label for="chkSnapPoints" title="Snap điểm đo trong bán kính ~8 m">Snap điểm đo</label>
-            </div>
-            <div id="cutList" class="cut-list" aria-label="Danh sách đường cắt"></div>
-            <button type="button" class="btn btn-add-cut" id="btnAddCut" title="Thêm đường cắt mới">
-              <i class="fa-solid fa-plus"></i> Thêm đường cắt
+            <button type="button" class="section-title" aria-expanded="false" data-section="cut">
+              <span class="section-title-label"><i class="fa-solid fa-slash"></i> Đường cắt</span>
+              <i class="fa-solid fa-chevron-down section-chevron"></i>
             </button>
+            <div class="section-body" hidden>
+              <div class="form-group">
+                <div class="toggle-group" title="Cần tải tim tuyến KML/KMZ để dùng Ngang / Dọc · Kéo đường cắt / nút giữa để dời">
+                  <button type="button" class="toggle-btn active" data-cut-mode="free">Tự do</button>
+                  <button type="button" class="toggle-btn" data-cut-mode="transverse" title="Cần tải tim tuyến KML/KMZ" disabled>Ngang</button>
+                  <button type="button" class="toggle-btn" data-cut-mode="longitudinal" title="Cần tải tim tuyến KML/KMZ" disabled>Dọc</button>
+                </div>
+              </div>
+              <div class="sidebar-row centerline-row">
+                <input type="file" id="centerlineFileInput" accept=".kml,.kmz" style="display: none;">
+                <button type="button" class="btn btn-centerline" id="btnUploadCenterline" title="Tải tim tuyến từ KML/KMZ">
+                  <i class="fa-solid fa-route"></i> Tim tuyến
+                </button>
+                <span class="centerline-file" id="centerlineFileLabel" title="">Chưa có</span>
+                <button type="button" class="icon-btn centerline-clear" id="btnClearCenterline" title="Xóa tim tuyến" disabled>
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+              <div class="sidebar-row">
+                <input type="checkbox" id="chkSnapPoints" checked title="Snap điểm đo trong bán kính ~8 m">
+                <label for="chkSnapPoints" title="Snap điểm đo trong bán kính ~8 m">Snap điểm đo</label>
+              </div>
+              <div id="cutList" class="cut-list" aria-label="Danh sách đường cắt"></div>
+              <button type="button" class="btn btn-add-cut" id="btnAddCut" title="Thêm đường cắt mới">
+                <i class="fa-solid fa-plus"></i> Thêm đường cắt
+              </button>
+            </div>
           </div>
 
         </aside>
+
+        <!-- Floating tools open button -->
+        <button type="button" class="tools-fab liquid-glass" id="btnOpenSidebar" title="Mở công cụ" aria-expanded="false" aria-controls="appSidebar">
+          <i class="fa-solid fa-sliders"></i>
+          <span>Công cụ</span>
+        </button>
 
         <div id="viewport3d"></div>
 
@@ -217,8 +243,11 @@
         <!-- 2D Map Window Overlay -->
         <div class="map2d-window liquid-glass" id="map2dWindow">
           <div class="map2d-header">
-            <span><i class="fa-solid fa-map-location-dot"></i> Bản đồ 2D · Đường cắt A–B</span>
+            <span class="map2d-title"><i class="fa-solid fa-map-location-dot"></i> Bản đồ 2D · Đường cắt A–B</span>
             <div class="map2d-header-actions">
+              <button class="icon-btn" id="btnMinimizeMap" title="Thu nhỏ bản đồ 2D">
+                <i class="fa-solid fa-minus"></i>
+              </button>
               <button class="icon-btn" id="btnToggleMapSize" title="Phóng to / Thu nhỏ bản đồ 2D">
                 <i class="fa-solid fa-expand"></i>
               </button>
@@ -231,8 +260,8 @@
         </div>
       </div>
 
-      <!-- Bottom Cross-Section Chart Panel -->
-      <section class="cross-section-panel liquid-glass">
+      <!-- Bottom Cross-Section Chart Panel (readable height on overview) -->
+      <section class="cross-section-panel liquid-glass" id="crossSectionPanel">
         <div class="cs-header">
           <div class="cs-title">
             <i class="fa-solid fa-chart-area"></i> Mặt cắt ngang lòng sông
@@ -257,10 +286,10 @@
                 <button type="button" class="toggle-btn" data-origin="B" id="btnDistFromB">Từ B</button>
               </div>
             </div>
-            <button class="btn" id="btnExportCSV" style="padding: 4px 12px; font-size: 0.72rem;">
-              <i class="fa-solid fa-download"></i> Xuất CSV
+            <button class="btn btn-cs-export" id="btnExportCSV" title="Xuất CSV mặt cắt">
+              <i class="fa-solid fa-download"></i> CSV
             </button>
-            <button class="icon-btn" id="btnToggleCsSize" title="Phóng to / Thu nhỏ mặt cắt">
+            <button class="icon-btn" id="btnToggleCsSize" title="Phóng to mặt cắt">
               <i class="fa-solid fa-expand"></i>
             </button>
           </div>

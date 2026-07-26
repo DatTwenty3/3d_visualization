@@ -71,10 +71,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Update Stats UI
         const b = dataLoader.bounds;
+        const minDepthTxt = `${b.maxZ.toFixed(2)} m`; // nông nhất = Z cao nhất
+        const maxDepthTxt = `${b.minZ.toFixed(2)} m`; // sâu nhất = Z thấp nhất (âm)
+        const avgDepthTxt = `${b.meanZ.toFixed(2)} m`;
         document.getElementById('statTotalPoints').textContent = dataLoader.points.length.toLocaleString();
-        document.getElementById('statMinDepth').textContent = `${b.maxZ.toFixed(2)} m`; // nông nhất = Z cao nhất
-        document.getElementById('statMaxDepth').textContent = `${b.minZ.toFixed(2)} m`; // sâu nhất = Z thấp nhất (âm)
-        document.getElementById('statAvgDepth').textContent = `${b.meanZ.toFixed(2)} m`;
+        document.getElementById('statMinDepth').textContent = minDepthTxt;
+        document.getElementById('statMaxDepth').textContent = maxDepthTxt;
+        document.getElementById('statAvgDepth').textContent = avgDepthTxt;
+        const quickStats = document.getElementById('quickStats');
+        if (quickStats) {
+          quickStats.title = `Nông nhất: ${minDepthTxt} · Trung bình: ${avgDepthTxt}`;
+        }
         document.getElementById('fileNameLabel').textContent = filename;
         document.getElementById('fileNameLabel').title = filename;
 
@@ -309,37 +316,254 @@ document.addEventListener('DOMContentLoaded', async () => {
     scene3D.resetCamera();
   });
 
-  // Maximize 2D Map Window Toggle
-  const btnToggleMapSize = document.getElementById('btnToggleMapSize');
+  // ——— Layout shell: drawer, accordion, map, chart, workspace modes ———
   const map2dWindow = document.getElementById('map2dWindow');
-  btnToggleMapSize.addEventListener('click', () => {
-    const isMaximized = map2dWindow.classList.toggle('maximized');
-    const icon = btnToggleMapSize.querySelector('i');
-    if (icon) {
-      icon.className = isMaximized ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
-    }
+  const btnToggleMapSize = document.getElementById('btnToggleMapSize');
+  const btnMinimizeMap = document.getElementById('btnMinimizeMap');
+  const csPanel = document.getElementById('crossSectionPanel') || document.querySelector('.cross-section-panel');
+  const btnToggleCsSize = document.getElementById('btnToggleCsSize');
+  const appSidebar = document.getElementById('appSidebar');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  const btnOpenSidebar = document.getElementById('btnOpenSidebar');
+  const btnCloseSidebar = document.getElementById('btnCloseSidebar');
+  const workspaceBtns = document.querySelectorAll('.workspace-mode-btn');
+
+  let mapUserMinimized = false;
+  let suppressWorkspaceSync = false;
+
+  function scheduleLayoutResize(delay = 320) {
     setTimeout(() => {
+      scene3D.onWindowResize();
+      if (chartManager.chart) chartManager.chart.resize();
       crossSection.resizeMap();
       crossSection.drawMap();
-    }, 320);
+    }, delay);
+  }
+
+  function updateMapChrome() {
+    const maximized = map2dWindow.classList.contains('maximized');
+    const minimized = map2dWindow.classList.contains('minimized');
+    const expandIcon = btnToggleMapSize && btnToggleMapSize.querySelector('i');
+    if (expandIcon) {
+      expandIcon.className = maximized ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+    }
+    if (btnToggleMapSize) {
+      btnToggleMapSize.title = maximized ? 'Thu về inset' : 'Phóng to bản đồ 2D';
+    }
+    if (btnMinimizeMap) {
+      const minIcon = btnMinimizeMap.querySelector('i');
+      if (minIcon) {
+        minIcon.className = minimized ? 'fa-solid fa-window-maximize' : 'fa-solid fa-minus';
+      }
+      btnMinimizeMap.title = minimized ? 'Mở lại bản đồ' : 'Thu nhỏ bản đồ 2D';
+    }
+  }
+
+  function updateCsChrome() {
+    if (!btnToggleCsSize || !csPanel) return;
+    const expanded = csPanel.classList.contains('expanded');
+    const icon = btnToggleCsSize.querySelector('i');
+    if (expanded) {
+      if (icon) icon.className = 'fa-solid fa-compress';
+      btnToggleCsSize.title = 'Thu về tổng quan';
+    } else {
+      if (icon) icon.className = 'fa-solid fa-expand';
+      btnToggleCsSize.title = 'Phóng to mặt cắt';
+    }
+  }
+
+  function setMapState({ maximized = false, minimized = false } = {}) {
+    map2dWindow.classList.toggle('maximized', maximized);
+    map2dWindow.classList.toggle('minimized', minimized && !maximized);
+    updateMapChrome();
+  }
+
+  function setChartState(state) {
+    // state: 'collapsed' | 'normal' | 'expanded'
+    csPanel.classList.remove('collapsed', 'expanded', 'hidden-by-mode');
+    if (state === 'collapsed') csPanel.classList.add('collapsed');
+    else if (state === 'expanded') csPanel.classList.add('expanded');
+    updateCsChrome();
+  }
+
+  function openDrawer() {
+    appSidebar.classList.add('open');
+    appSidebar.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('drawer-open');
+    if (sidebarBackdrop) {
+      sidebarBackdrop.hidden = false;
+      requestAnimationFrame(() => sidebarBackdrop.classList.add('visible'));
+    }
+    if (btnOpenSidebar) btnOpenSidebar.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeDrawer() {
+    appSidebar.classList.remove('open');
+    appSidebar.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('drawer-open');
+    if (sidebarBackdrop) {
+      sidebarBackdrop.classList.remove('visible');
+      setTimeout(() => { sidebarBackdrop.hidden = true; }, 220);
+    }
+    if (btnOpenSidebar) btnOpenSidebar.setAttribute('aria-expanded', 'false');
+  }
+
+  function applyWorkspace(mode) {
+    document.body.dataset.workspace = mode;
+    workspaceBtns.forEach((btn) => {
+      const active = btn.dataset.workspace === mode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+
+    if (mode === 'overview') {
+      setChartState('normal');
+      setMapState({ maximized: false, minimized: mapUserMinimized });
+    } else if (mode === '3d') {
+      setChartState('collapsed');
+      csPanel.classList.add('hidden-by-mode');
+      setMapState({ maximized: false, minimized: true });
+    } else if (mode === 'map') {
+      setChartState('collapsed');
+      csPanel.classList.add('hidden-by-mode');
+      setMapState({ maximized: true, minimized: false });
+    } else if (mode === 'section') {
+      setChartState('expanded');
+      setMapState({ maximized: false, minimized: true });
+    }
+
+    scheduleLayoutResize(360);
+  }
+
+  if (btnOpenSidebar) btnOpenSidebar.addEventListener('click', openDrawer);
+  if (btnCloseSidebar) btnCloseSidebar.addEventListener('click', closeDrawer);
+  if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', closeDrawer);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && appSidebar.classList.contains('open')) {
+      closeDrawer();
+    }
   });
 
-  // Expand / collapse cross-section chart panel
-  const btnToggleCsSize = document.getElementById('btnToggleCsSize');
-  const csPanel = document.querySelector('.cross-section-panel');
-  btnToggleCsSize.addEventListener('click', () => {
-    const isExpanded = csPanel.classList.toggle('expanded');
-    const icon = btnToggleCsSize.querySelector('i');
-    if (icon) {
-      icon.className = isExpanded ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
-    }
-    btnToggleCsSize.title = isExpanded ? 'Thu nhỏ mặt cắt' : 'Phóng to mặt cắt';
-    setTimeout(() => {
-      if (chartManager.chart) chartManager.chart.resize();
-      scene3D.onWindowResize();
-      crossSection.resizeMap();
-    }, 360);
+  // Accordion sections
+  document.querySelectorAll('.sidebar-section .section-title').forEach((titleBtn) => {
+    titleBtn.addEventListener('click', () => {
+      const section = titleBtn.closest('.sidebar-section');
+      const body = section.querySelector('.section-body');
+      const willOpen = !section.classList.contains('open');
+
+      document.querySelectorAll('.sidebar-section').forEach((s) => {
+        s.classList.remove('open');
+        const b = s.querySelector('.section-body');
+        const t = s.querySelector('.section-title');
+        if (b) b.hidden = true;
+        if (t) t.setAttribute('aria-expanded', 'false');
+      });
+
+      if (willOpen) {
+        section.classList.add('open');
+        if (body) body.hidden = false;
+        titleBtn.setAttribute('aria-expanded', 'true');
+      }
+    });
   });
+
+  // Ensure default accordion: only Hiển thị open
+  document.querySelectorAll('.sidebar-section').forEach((s) => {
+    const isOpen = s.classList.contains('open');
+    const body = s.querySelector('.section-body');
+    const title = s.querySelector('.section-title');
+    if (body) body.hidden = !isOpen;
+    if (title) title.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+
+  workspaceBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (suppressWorkspaceSync) return;
+      applyWorkspace(btn.dataset.workspace);
+    });
+  });
+
+  btnToggleMapSize.addEventListener('click', () => {
+    const willMaximize = !map2dWindow.classList.contains('maximized');
+    if (willMaximize) {
+      mapUserMinimized = false;
+      setMapState({ maximized: true, minimized: false });
+      if (document.body.dataset.workspace !== 'map') {
+        suppressWorkspaceSync = true;
+        document.body.dataset.workspace = 'map';
+        workspaceBtns.forEach((b) => {
+          const active = b.dataset.workspace === 'map';
+          b.classList.toggle('active', active);
+          b.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        csPanel.classList.add('hidden-by-mode');
+        suppressWorkspaceSync = false;
+      }
+    } else {
+      setMapState({ maximized: false, minimized: mapUserMinimized });
+      if (document.body.dataset.workspace === 'map') {
+        applyWorkspace('overview');
+        return;
+      }
+    }
+    scheduleLayoutResize(320);
+  });
+
+  if (btnMinimizeMap) {
+    btnMinimizeMap.addEventListener('click', () => {
+      if (map2dWindow.classList.contains('minimized')) {
+        mapUserMinimized = false;
+        setMapState({ maximized: false, minimized: false });
+      } else {
+        mapUserMinimized = true;
+        setMapState({ maximized: false, minimized: true });
+      }
+      scheduleLayoutResize(280);
+    });
+  }
+
+  // Chart on overview: normal ↔ expanded (no collapsed on overview)
+  btnToggleCsSize.addEventListener('click', () => {
+    if (csPanel.classList.contains('hidden-by-mode') ||
+        document.body.dataset.workspace === '3d' ||
+        document.body.dataset.workspace === 'map') {
+      applyWorkspace('section');
+      return;
+    }
+    if (csPanel.classList.contains('expanded')) {
+      setChartState('normal');
+      if (document.body.dataset.workspace === 'section') {
+        suppressWorkspaceSync = true;
+        document.body.dataset.workspace = 'overview';
+        workspaceBtns.forEach((b) => {
+          const active = b.dataset.workspace === 'overview';
+          b.classList.toggle('active', active);
+          b.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        suppressWorkspaceSync = false;
+      }
+    } else {
+      // normal or collapsed → expand (focus)
+      setChartState('expanded');
+      if (document.body.dataset.workspace === 'overview') {
+        suppressWorkspaceSync = true;
+        document.body.dataset.workspace = 'section';
+        workspaceBtns.forEach((b) => {
+          const active = b.dataset.workspace === 'section';
+          b.classList.toggle('active', active);
+          b.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        suppressWorkspaceSync = false;
+      }
+    }
+    scheduleLayoutResize(360);
+  });
+
+  // Initial chrome + layout for default overview
+  updateMapChrome();
+  updateCsChrome();
+  applyWorkspace(document.body.dataset.workspace || 'overview');
 
   // Distance origin for hover depth label (from A or from B)
   const originBtns = document.querySelectorAll('.cs-origin-toggle .toggle-btn');

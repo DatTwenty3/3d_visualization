@@ -527,6 +527,9 @@ class ChartManager {
    * Cross-section width, max depth, and submerged area under current waterLevel
    */
   computeProfileStats(samples) {
+    if (!samples || samples.length === 0) {
+      return { width: '0.0', maxDepth: '0.00', area: '0.0' };
+    }
     const width = samples[samples.length - 1].distance;
 
     let maxDepth = 0;
