@@ -21,6 +21,7 @@ class Scene3D {
     this.contoursGroup = null;
     this.hoverMarker = null;
     this.basemapGroup = null;
+    this.extremaGroup = null; // Deepest / shallowest arrows
 
     // Raycaster for Hover Inspector
     this.raycaster = new THREE.Raycaster();
@@ -35,6 +36,7 @@ class Scene3D {
     this.waterLevel = 0; // Water surface elevation (m), default Z = 0
     this.showContours = true;
     this.contourInterval = 1; // Contour spacing (m), range 0.5–1
+    this.showExtrema = true;
     this.cutPlanesGroup = null; // Multiple cut planes
 
     // VN-2000 ↔ WGS84 projectors (set from app via CrossSection)
@@ -142,6 +144,7 @@ class Scene3D {
       this.scene.remove(this.cutLineMesh);
       this.cutLineMesh = null;
     }
+    this.clearExtremumMarkers();
     this.clearBasemap();
 
     if (!grid || grid.length === 0) return;
@@ -290,13 +293,16 @@ class Scene3D {
     this.hoverMarker = this.createHoverMarker(maxSpan);
     this.scene.add(this.hoverMarker);
 
-    // 7. Draw 3D Contour Lines
+    // 7. Extremum arrows (deepest / shallowest)
+    this.rebuildExtremumMarkers();
+
+    // 8. Draw 3D Contour Lines
     this.drawContours3D();
 
-    // 8. Setup Raycaster Pointer Move Listener
+    // 9. Setup Raycaster Pointer Move Listener
     this.setupRaycaster();
 
-    // 9. Satellite basemap at water level with survey-corridor hole
+    // 10. Satellite basemap at water level with survey-corridor hole
     this.rebuildBasemap();
 
     // Apply visibility according to renderMode
@@ -520,10 +526,191 @@ class Scene3D {
 
     this.rebuildTerrainSkirt();
     this.updateBasemapElevation();
+    this.updateExtremumMarkerElevations();
   }
 
   _isGridCellValid(cell) {
     return !!(cell && cell.valid !== false && cell.z != null);
+  }
+
+  /**
+   * Remove deepest / shallowest arrow markers from the scene
+   */
+  clearExtremumMarkers() {
+    if (!this.extremaGroup) return;
+    this.scene.remove(this.extremaGroup);
+    this.extremaGroup.traverse((obj) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (obj.material.map) obj.material.map.dispose();
+        obj.material.dispose();
+      }
+    });
+    this.extremaGroup = null;
+  }
+
+  /**
+   * Find survey points with min Z (deepest) and max Z (shallowest)
+   */
+  findExtremumPoints() {
+    const points = this.dataLoader && this.dataLoader.points;
+    if (!points || points.length === 0) return { deepest: null, shallowest: null };
+
+    let deepest = points[0];
+    let shallowest = points[0];
+    for (let i = 1; i < points.length; i++) {
+      const p = points[i];
+      if (p.z < deepest.z) deepest = p;
+      if (p.z > shallowest.z) shallowest = p;
+    }
+    return { deepest, shallowest };
+  }
+
+  /**
+   * Small downward 3D cone with label for extremum points
+   */
+  createExtremumArrow(label, zValue, colorHex, sceneSpan = 200) {
+    const group = new THREE.Group();
+    // Keep markers compact relative to survey span (~20% larger)
+    const scale = Math.max(0.54, Math.min(1.62, sceneSpan * 0.00384));
+    group.userData.markerScale = scale;
+    group.userData.baseY = 0;
+
+    const tipH = 2.4 * scale;
+    const tipR = 1.05 * scale;
+    const hex = '#' + colorHex.toString(16).padStart(6, '0');
+
+    // Small cone: apex at local y=0 (surface), base above — like ^ flipped down
+    const tip = new THREE.Mesh(
+      new THREE.ConeGeometry(tipR, tipH, 24),
+      new THREE.MeshBasicMaterial({ color: colorHex, depthTest: true, depthWrite: true })
+    );
+    tip.rotation.x = Math.PI;
+    tip.position.y = tipH / 2;
+    tip.name = 'extremumTip';
+    group.add(tip);
+
+    const tipRim = new THREE.Mesh(
+      new THREE.ConeGeometry(tipR * 1.18, tipH * 1.06, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.BackSide,
+        depthWrite: false
+      })
+    );
+    tipRim.rotation.x = Math.PI;
+    tipRim.position.y = tipH / 2;
+    group.add(tipRim);
+
+    // Label sprite above cone base
+    const canvas = document.createElement('canvas');
+    canvas.width = 384;
+    canvas.height = 96;
+    const ctx = canvas.getContext('2d');
+
+    const rr = 20;
+    ctx.beginPath();
+    ctx.moveTo(rr, 8);
+    ctx.lineTo(canvas.width - rr, 8);
+    ctx.quadraticCurveTo(canvas.width - 8, 8, canvas.width - 8, 8 + rr);
+    ctx.lineTo(canvas.width - 8, canvas.height - 8 - rr);
+    ctx.quadraticCurveTo(canvas.width - 8, canvas.height - 8, canvas.width - rr, canvas.height - 8);
+    ctx.lineTo(rr, canvas.height - 8);
+    ctx.quadraticCurveTo(8, canvas.height - 8, 8, canvas.height - 8 - rr);
+    ctx.lineTo(8, 8 + rr);
+    ctx.quadraticCurveTo(8, 8, rr, 8);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = hex;
+    ctx.stroke();
+
+    ctx.fillStyle = '#1d1d1f';
+    ctx.font = '600 28px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, canvas.width / 2, 34);
+
+    ctx.fillStyle = hex;
+    ctx.font = '700 30px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+    ctx.fillText(`${zValue.toFixed(2)} m`, canvas.width / 2, 68);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false
+      })
+    );
+    const spriteW = 14 * scale;
+    sprite.scale.set(spriteW, spriteW * (96 / 384), 1);
+    sprite.position.y = tipH + 3.2 * scale;
+    group.add(sprite);
+
+    return group;
+  }
+
+  /**
+   * Build / rebuild deepest & shallowest arrows on the terrain
+   */
+  rebuildExtremumMarkers() {
+    this.clearExtremumMarkers();
+    if (!this.dataLoader || !this.showExtrema) return;
+
+    const { deepest, shallowest } = this.findExtremumPoints();
+    if (!deepest || !shallowest) return;
+
+    const bounds = this.dataLoader.bounds;
+    const maxSpan = Math.max(bounds.spanX, bounds.spanY) * 1.5;
+    const group = new THREE.Group();
+    group.name = 'extremaGroup';
+
+    // Deepest = min Z — brand-adjacent deep blue
+    const deepArrow = this.createExtremumArrow('Sâu nhất', deepest.z, 0x2563eb, maxSpan);
+    deepArrow.position.set(deepest.localX, deepest.z * this.zScale, deepest.localZ);
+    deepArrow.userData.baseY = deepest.z * this.zScale;
+    deepArrow.userData.pointZ = deepest.z;
+    deepArrow.userData.kind = 'deep';
+    group.add(deepArrow);
+
+    // Shallowest = max Z — brand orange
+    const shallowArrow = this.createExtremumArrow('Nông nhất', shallowest.z, 0xea580c, maxSpan);
+    shallowArrow.position.set(shallowest.localX, shallowest.z * this.zScale, shallowest.localZ);
+    shallowArrow.userData.baseY = shallowest.z * this.zScale;
+    shallowArrow.userData.pointZ = shallowest.z;
+    shallowArrow.userData.kind = 'shallow';
+    group.add(shallowArrow);
+
+    this.extremaGroup = group;
+    this.scene.add(group);
+  }
+
+  /**
+   * Keep extremum arrows on the surface when Z exaggeration changes
+   */
+  updateExtremumMarkerElevations() {
+    if (!this.extremaGroup) return;
+    this.extremaGroup.children.forEach((arrow) => {
+      if (arrow.userData.pointZ == null) return;
+      const y = arrow.userData.pointZ * this.zScale;
+      arrow.userData.baseY = y;
+      arrow.position.y = y;
+    });
+  }
+
+  setExtremaVisible(visible) {
+    this.showExtrema = !!visible;
+    if (!visible) {
+      this.clearExtremumMarkers();
+      return;
+    }
+    if (this.dataLoader) this.rebuildExtremumMarkers();
   }
 
   /**

@@ -238,6 +238,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Extremum arrows (deepest / shallowest) on 3D model
+  const chkExtrema = document.getElementById('chkExtrema');
+  if (chkExtrema) {
+    scene3D.setExtremaVisible(chkExtrema.checked);
+    chkExtrema.addEventListener('change', (e) => {
+      scene3D.setExtremaVisible(e.target.checked);
+    });
+  }
+
   // Contour Interval Input (0.5–1.0 m)
   const contourIntervalInput = document.getElementById('contourIntervalInput');
   if (contourIntervalInput) {
