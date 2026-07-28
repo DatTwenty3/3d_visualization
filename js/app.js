@@ -381,6 +381,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnMinimizeMap = document.getElementById('btnMinimizeMap');
   const csPanel = document.getElementById('crossSectionPanel') || document.querySelector('.cross-section-panel');
   const btnToggleCsSize = document.getElementById('btnToggleCsSize');
+  const csResizeHandle = document.getElementById('csResizeHandle');
   const appSidebar = document.getElementById('appSidebar');
   const sidebarBackdrop = document.getElementById('sidebarBackdrop');
   const btnOpenSidebar = document.getElementById('btnOpenSidebar');
@@ -390,6 +391,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let mapUserMinimized = false;
   let suppressWorkspaceSync = false;
 
+  const CS_MIN_HEIGHT = 280;
+  const CS_VIEWPORT_RESERVE = 160;
+
   function scheduleLayoutResize(delay = 320) {
     setTimeout(() => {
       scene3D.onWindowResize();
@@ -397,6 +401,28 @@ document.addEventListener('DOMContentLoaded', async () => {
       crossSection.resizeMap();
       crossSection.drawMap();
     }, delay);
+  }
+
+  function clearCsManualHeight() {
+    if (!csPanel) return;
+    csPanel.classList.remove('is-manual-height', 'is-resizing');
+    csPanel.style.height = '';
+    document.body.classList.remove('is-cs-resizing');
+  }
+
+  function getCsMaxHeight() {
+    const main = csPanel && csPanel.parentElement;
+    if (!main) return 800;
+    return Math.max(CS_MIN_HEIGHT, main.clientHeight - CS_VIEWPORT_RESERVE);
+  }
+
+  function applyCsHeight(px) {
+    const maxH = getCsMaxHeight();
+    const h = Math.min(maxH, Math.max(CS_MIN_HEIGHT, Math.round(px)));
+    csPanel.style.height = `${h}px`;
+    csPanel.classList.add('is-manual-height', 'expanded');
+    csPanel.classList.remove('collapsed', 'hidden-by-mode');
+    return h;
   }
 
   function updateMapChrome() {
@@ -439,6 +465,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function setChartState(state) {
     // state: 'collapsed' | 'normal' | 'expanded'
+    if (state !== 'expanded') clearCsManualHeight();
     csPanel.classList.remove('collapsed', 'expanded', 'hidden-by-mode');
     if (state === 'collapsed') csPanel.classList.add('collapsed');
     else if (state === 'expanded') csPanel.classList.add('expanded');
@@ -618,6 +645,60 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     scheduleLayoutResize(360);
   });
+
+  // Drag-resize cross-section panel height (expanded only)
+  if (csResizeHandle && csPanel) {
+    let csDrag = null;
+    let csResizeRaf = 0;
+
+    function requestChartResize() {
+      if (csResizeRaf) return;
+      csResizeRaf = requestAnimationFrame(() => {
+        csResizeRaf = 0;
+        if (chartManager.chart) chartManager.chart.resize();
+      });
+    }
+
+    csResizeHandle.addEventListener('pointerdown', (e) => {
+      if (!csPanel.classList.contains('expanded')) return;
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      e.preventDefault();
+      const startHeight = csPanel.getBoundingClientRect().height;
+      csDrag = { pointerId: e.pointerId, startY: e.clientY, startHeight };
+      csPanel.classList.add('is-resizing');
+      document.body.classList.add('is-cs-resizing');
+      csResizeHandle.setPointerCapture(e.pointerId);
+    });
+
+    csResizeHandle.addEventListener('pointermove', (e) => {
+      if (!csDrag || e.pointerId !== csDrag.pointerId) return;
+      // Drag up → taller panel
+      const next = csDrag.startHeight + (csDrag.startY - e.clientY);
+      applyCsHeight(next);
+      requestChartResize();
+    });
+
+    function endCsDrag(e) {
+      if (!csDrag || (e && e.pointerId !== csDrag.pointerId)) return;
+      csDrag = null;
+      csPanel.classList.remove('is-resizing');
+      document.body.classList.remove('is-cs-resizing');
+      scheduleLayoutResize(0);
+    }
+
+    csResizeHandle.addEventListener('pointerup', endCsDrag);
+    csResizeHandle.addEventListener('pointercancel', endCsDrag);
+
+    csResizeHandle.addEventListener('keydown', (e) => {
+      if (!csPanel.classList.contains('expanded')) return;
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const current = csPanel.getBoundingClientRect().height;
+      const delta = e.key === 'ArrowUp' ? 20 : -20;
+      applyCsHeight(current + delta);
+      scheduleLayoutResize(0);
+    });
+  }
 
   // Initial chrome + layout for default overview
   updateMapChrome();

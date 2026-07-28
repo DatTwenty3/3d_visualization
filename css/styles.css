@@ -1368,6 +1368,15 @@ input[type="range"].form-range::-moz-range-thumb {
   min-height: 320px;
 }
 
+.cross-section-panel.expanded.is-manual-height {
+  flex: 0 0 auto;
+  min-height: 280px;
+}
+
+.cross-section-panel.is-resizing {
+  transition: none;
+}
+
 .cross-section-panel.hidden-by-mode {
   display: none;
 }
@@ -1375,6 +1384,59 @@ input[type="range"].form-range::-moz-range-thumb {
 .main-content:has(.cross-section-panel.expanded) .viewports-container {
   flex: 0.55 1 0;
   min-height: 140px;
+}
+
+.main-content:has(.cross-section-panel.expanded.is-manual-height) .viewports-container {
+  flex: 1 1 auto;
+}
+
+/* Drag handle — only when expanded */
+.cs-resize-handle {
+  display: none;
+  position: relative;
+  z-index: 4;
+  flex: 0 0 8px;
+  height: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: row-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.cross-section-panel.expanded .cs-resize-handle {
+  display: block;
+}
+
+.cs-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--hairline, #d2d2d7);
+  transform: translate(-50%, -50%);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+
+.cs-resize-handle:hover::after,
+.cs-resize-handle:focus-visible::after,
+.cross-section-panel.is-resizing .cs-resize-handle::after {
+  background: #ea580c;
+  width: 48px;
+}
+
+body.is-cs-resizing {
+  cursor: row-resize;
+  user-select: none;
+}
+
+body.is-cs-resizing .viewports-container {
+  pointer-events: none;
 }
 
 /* Workspace focus modes */
